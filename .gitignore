@@ -2,6 +2,9 @@
 *.lipp
 *.html
 
+# System files 
+.directory
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -94,6 +97,9 @@ ENV/
 # Spyder project settings
 .spyderproject
 .spyproject
+
+# PyCharm project settings
+.idea
 
 # Rope project settings
 .ropeproject
