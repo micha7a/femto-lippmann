@@ -2,6 +2,9 @@
 *.lipp
 *.html
 
+# Simulation results
+simulations/results
+
 # System files 
 .directory
 
