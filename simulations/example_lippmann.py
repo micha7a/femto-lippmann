@@ -14,17 +14,19 @@ c0 = 299792458
 c = c0 / n0
 N_omegas = 300
 delta_z = 1E-9
-shift = 5E-6  # in seconds or time :D
-phase = np.pi  # in radians
+shift = 2E-14 # in seconds
+phase = 0  # in radians
 max_depth = 5E-6
 lambdas = wavelengths_omega_spaced()
 
+print("shift in phase =", shift*2*np.pi*c0)
 spectrum = mt.generate_gaussian_spectrum(lambdas=lambdas, mu=550E-9, sigma=50E-9)
-# a = np.power(spectrum, 1/2)
-# a = a + a*np.exp(1j*(shift*2*np.pi*c0/lambdas+phase))
-# spectrum = np.power(np.abs(a),2)
-# spectrum = generate_mono_spectrum(lambdas)
-# spectrum = generate_rect_spectrum(lambdas)
+# spectrum = mt.generate_mono_spectrum(lambdas)
+# spectrum = mt.generate_rect_spectrum(lambdas)
+a = np.power(spectrum, 1/2)
+a = a + a*np.exp(1j*(shift*2*np.pi*c0/lambdas+phase))
+spectrum = np.power(np.abs(a),2)
+
 
 plt.figure()
 plt.plot(lambdas, np.real(spectrum))

@@ -94,7 +94,7 @@ def shift_domain_const_length(array, x_min, dx, new_x_min, new_length):
 def front_interference_time(wave1: np.ndarray, z1: float, wave2: np.ndarray, z2: float, dt: float, c: float,
                             z_min: float, z_max: float, pulses1: int = 1, pulses2: int = 1, period1: float = 0,
                             period2: float = 0) -> Tuple[np.array, np.array, float]:
-    corr = np.real(signal.correlate(wave1, np.conj(wave2)) * dt)
+    corr = np.real(signal.correlate(wave1, wave2) * dt) # TODO (michalina) why there is no complex conjugate?
     dz = dt * c / 2
     corr_z_range = dz * np.floor((len(corr) - 1) / 2)
     final_length = int(np.round((z_max - z_min) / dz) + 1)
@@ -114,3 +114,25 @@ def front_interference_mirror(wave, z0, dt, c, depth, pulses=1, period=0) -> Tup
 
 def propagate(omegas, spectrum, z, t, c):
     return spectrum * np.exp(1j * omegas * (z / c - t))
+
+
+def interference_with_phase(lambdas, spectrum, depths, shift, phase):
+    """"Compute the Lippmann transform
+
+        lambdas     - vector of wavelengths
+        spectrum    - spectrum of light
+        depths      - vector of depths
+        shift       - shift in meters
+        phase       - phase change in radians
+
+        Returns intensity       - computed intensity of the interfering waves
+                delta_intensity - the intensity without the baseline term"""""
+
+    two_k = 4 * np.pi / lambdas
+
+    one_minus_cosines = 0.5 * (1 - np.cos(two_k[None, :] * (depths[:, None]-shift/2) - phase))
+    cosines = 0.5 * np.cos(two_k[None, :] * (depths[:, None]-shift/2) - phase)
+
+    intensity = -np.trapz(one_minus_cosines * spectrum[None, :], two_k, axis=1)
+    delta_intensity = np.trapz(cosines * spectrum[None, :], two_k, axis=1)
+    return intensity, delta_intensity
