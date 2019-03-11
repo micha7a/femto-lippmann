@@ -1,4 +1,5 @@
 from simulations.tools import *
+import matplotlib.pyplot as plt
 
 # setting process related constants
 n0 = 1.45

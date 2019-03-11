@@ -23,9 +23,9 @@ print("shift in phase =", shift*2*np.pi*c0)
 spectrum = mt.generate_gaussian_spectrum(lambdas=lambdas, mu=550E-9, sigma=50E-9)
 # spectrum = mt.generate_mono_spectrum(lambdas)
 # spectrum = mt.generate_rect_spectrum(lambdas)
-a = np.power(spectrum, 1/2)
-a = a + a*np.exp(1j*(shift*2*np.pi*c0/lambdas+phase))
-spectrum = np.power(np.abs(a),2)
+# a = np.power(spectrum, 1/2)
+# a = a + a*np.exp(1j*(shift*2*np.pi*c0/lambdas+phase))
+# spectrum = np.power(np.abs(a),2)
 
 
 plt.figure()
@@ -47,8 +47,8 @@ ns_sigm = sigmoid(ns)
 ns_sigm = ns_sigm * dn + n0
 
 # change the power leading to different cut from the saturation
-min_cut = 0.8
-max_cut = 0.99
+min_cut = 0.5
+max_cut = 0.9
 ns_sat = sigmoid((ns - min_cut) / (max_cut - min_cut))
 ns_sat = ns_sat * dn + n0
 

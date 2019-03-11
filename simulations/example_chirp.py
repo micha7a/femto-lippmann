@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 
+experiment_number = 0
+directory = "./results/"
+
 n0 = 1.45
 dn = 1e-3
 c0 = 299792458
@@ -48,7 +51,7 @@ ax2.set_ylabel("real part")
 # ax2.plot(omegas, np.imag(spectrum))
 # ax2.set_ylim([0,2*np.pi])
 plt.title('Original object spectrum')
-plt.savefig("spectrum.pdf")
+plt.savefig(directory + "spectrum" + str(experiment_number) + ".pdf")
 plt.show()
 
 fig2, ax1 = plt.subplots()
@@ -60,7 +63,7 @@ ax2.plot(times, np.real(packet), "g", alpha=0.3)
 ax2.set_ylabel("real part")
 # ax2.set_ylim([0,2*np.pi])
 plt.title('Packet')
-plt.savefig("first_chirp.pdf")
+plt.savefig("{}first_chirp{}.pdf".format(directory, experiment_number))
 plt.show()
 
 new_packet  = np.fft.fftshift( np.fft.ifft(np.fft.ifftshift(np.abs(spectrum))))
@@ -74,7 +77,7 @@ ax2.plot(times, np.real(new_packet), "g", alpha=0.3)
 ax2.set_ylabel("real part")
 # ax2.set_ylim([0,2*np.pi])
 plt.title('Packet 2')
-plt.savefig("second_chirp.pdf")
+plt.savefig("{}second_chirp{}.pdf".format(directory, experiment_number))
 plt.show()
 
 
@@ -101,7 +104,7 @@ plt.title('Interference pattern')
 # plt.axhline(min_cut, c="C1", ls="--", label="lower cutoff")
 # plt.axhline(max_cut, c="C1", ls="-.", label="upper cutoff")
 plt.legend()
-plt.savefig("first_chirp_pattern.pdf")
+plt.savefig("{}first_chirp_pattern{}.pdf".format(directory, experiment_number))
 plt.show()
 
 
@@ -128,7 +131,7 @@ plt.title('Interference pattern')
 # plt.axhline(min_cut, c="C1", ls="--", label="lower cutoff")
 # plt.axhline(max_cut, c="C1", ls="-.", label="upper cutoff")
 plt.legend()
-plt.savefig("second_chirp_pattern.pdf")
+plt.savefig("{}second_chirp_pattern{}.pdf".format(directory, experiment_number))
 plt.show()
 
 
