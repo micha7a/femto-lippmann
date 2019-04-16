@@ -18,6 +18,7 @@ shift = 2E-14 # in seconds
 phase = 0  # in radians
 max_depth = 5E-6
 lambdas = wavelengths_omega_spaced()
+depths = np.arange(0, max_depth, delta_z)
 
 print("shift in phase =", shift*2*np.pi*c0)
 spectrum = mt.generate_gaussian_spectrum(lambdas=lambdas, mu=550E-9, sigma=50E-9)
@@ -34,7 +35,6 @@ plt.title('Original object spectrum')
 plt.savefig(directory + "spectrum" + str(experiment_number) + ".pdf")
 plt.show()
 
-depths = np.arange(0, max_depth, delta_z)
 intensity, delta_intensity = mt.lippmann_transform(lambdas / n0, spectrum, depths)
 
 
