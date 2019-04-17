@@ -1,6 +1,5 @@
 certifi==2019.3.9
 cycler==0.10.0
--e git+https://github.com/micha7a/femto-lippmann.git@3f4548609378116feaa39026bfa36cb850cf7ed3#egg=Femto_Lippmann
 kiwisolver==1.0.1
 matplotlib==3.0.3
 numpy==1.16.2
