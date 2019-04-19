@@ -24,14 +24,14 @@ You can also install `Anaconda`, available [here](https://www.anaconda.com).
 
 ## TODOs
 
- - switch to using tmm & scipy.stats
- - create signal/wave class (with no zero frequency)
-    - multiplication (scalar, signal)
-    - addition (signal)
-    - sparse representation
-    - spectrum / time conversion
- - create a material class 
-    - index of refraction
-    - change of index
-    - deposited energy
-    - propagation of wave 
+ - switch to using tmm & scipy.stats (?)
+ - material class 
+    - how the deposited energy depends on current energy deposited?
+    the response is sigmoidal, but how the response translates to deposited energy
+    - propagation of wave:
+    seems best to use now Gilles matrix theory (still).
+     Wee need spectrum at each z, might use different discretization for simulation 
+     and for plotting. The equation we want to calculate is:
+     $$\sum_{k} |A_+(k, z) + A_-(k, z)|^2 dk $$
+ - add documentation
+ - add tests
