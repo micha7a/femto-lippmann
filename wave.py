@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
 
-C = 1.0
+C = 1.0  # TODO Make some kid of gloal k or global environment?
+
 
 def sigmoid(x, x_min, x_max, percentile=0.95):
     rate = - 2 * np.log(percentile) / (x_max - x_min)
@@ -25,7 +27,6 @@ def sigmoid_inverse(y, min_margin=0.05, max_margin=0.95):
 
 
 class Spectrum(object):
-    """TODO"""
 
     def __init__(self,
                  spectrum_array: np.ndarray = np.empty(0),
@@ -50,9 +51,11 @@ class Spectrum(object):
     def __add__(self, other) -> Spectrum:
         if self.negative != other.negative:
             return Spectrum(self.s, self.k, self.negative)
-        if self.k != other.k:
+        if not np.allclose(self.k, other.k):
             raise NotImplementedError
-        return Spectrum(self.s + other.s, self.k, self.negative)
+        return Spectrum(spectrum_array=self.s + other.s,
+                        k=self.k,
+                        negative=self.negative)
 
     def amplitude(self, z, time=0) -> np.array:
         sign = -1 if self.negative else 1
@@ -77,7 +80,10 @@ class Spectrum(object):
         self.s = self.s * np.exp(1j * self.sign() * C * time * self.k)
 
     def shift(self, z):
-        self.s = self.s * np.exp(-1j * self.sign() * z * self.k)
+        self.shift_forward(self.sign() * z)
+
+    def shift_forward(self, z):
+        self.s = self.s * np.exp(1j * z * self.k)
 
     def wavelength(self):
         return 2 * np.pi / self.k
@@ -134,6 +140,14 @@ class GaussianSpectrum(Spectrum):
         self.s = amplitude / (np.sqrt(2*np.pi) * std) * np.exp(- (self.k - mean) ** 2 / (2 * std ** 2))
 
 
+class ChirpedSpectrum(GaussianSpectrum):
+    def __init__(self,
+                 skew: float = 0,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.s = self.s * np.exp(1j * skew * self.k ** 2)
+
+
 class Interference(object):
     """TODO"""
 
@@ -141,9 +155,9 @@ class Interference(object):
                  positive: Spectrum = Spectrum(np.empty(0)),
                  negative: Spectrum = Spectrum(np.empty(0))):
         assert np.allclose(positive.k, negative.k)
-        self.positive = positive
+        self.positive = copy.deepcopy(positive)
         self.positive.negative = False
-        self.negative = negative
+        self.negative = copy.deepcopy(negative)
         self.negative.negative = True
         self.k = positive.k
 
@@ -164,9 +178,12 @@ class Interference(object):
     def power_spectrum(self):
         return self.positive.power_spectrum(), self.negative.power_spectrum()
 
-    def intensity(self, **kwargs):
-        correlation = 2 * np.real((self.positive * self.negative).amplitude(**kwargs))
-        return self.positive.power() + self.positive.power() + correlation
+    def intensity(self, z, **kwargs):
+        correlation = 2 * np.real((self.positive * self.negative).amplitude(z=2*z, **kwargs))
+        return self.positive.power() + self.negative.power() + correlation
+
+    def dk(self):
+        return self.positive.dk()
 
     # TODO(michalina) implement better getters? def __get__(self, instance, owner)
 
@@ -176,11 +193,14 @@ class Material(object):
 
     def __init__(self,
                  z: np.ndarray,
-                 n0: float = 1,
+                 n0: complex = 1,
                  **kwargs):
+        assert np.imag(n0) >= 0
+        self.z = z
         self.z = z
         self.n0 = n0
         self.deposited_energy = np.zeros_like(z)
+        self.length = z[-1] - z[0]
 
     def index_of_refraction(self) -> np.ndarray:
         raise NotImplementedError
@@ -188,7 +208,7 @@ class Material(object):
     def energy_response(self, energy: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
-    def transmitted(self, spectrum: Spectrum) -> Spectrum:
+    def transmitted(self, spectrum: Spectrum) -> Spectrum:  # TODO Do I need this?
         raise NotImplementedError
 
     def reflected(self, spectrum: Spectrum) -> Spectrum:
@@ -196,13 +216,14 @@ class Material(object):
 
     def energy_distribution(self, interference: Interference) -> np.ndarray:
         total_amplitude = self.propagate(interference.positive) + self.propagate(interference.negative)
-        return np.sum((np.abs(total_amplitude) ** 2), axis=1)
+        return np.sum((np.abs(total_amplitude) ** 2), axis=0) * interference.dk()
 
     def record(self, interference: Interference):
         energy = self.energy_distribution(interference)
         self.deposited_energy += self.energy_response(energy)
 
     def propagate(self, spectrum: Spectrum) -> np.array:
+        """Calculate energy profile at each point of dielectric at each frequency"""
         raise NotImplementedError
 
 
@@ -219,13 +240,20 @@ class FixedDielectric(Material):
         return np.zeros_like(energy)
 
     def transmitted(self, spectrum):
+        spectrum = copy.deepcopy(spectrum)
+        spectrum.shift_forward(self.length * self.n0)
         return spectrum
 
     def reflected(self, spectrum):
-        return 0*spectrum
+        return 0 * spectrum
 
     def propagate(self, spectrum: Spectrum):
-        pass  # TODO(michalinap) propagate according to the index of refraction
+        if spectrum.negative:
+            z = self.z - self.z[-1]
+        else:
+            z = self.z - self.z[0]
+        transform = np.exp(1j * spectrum.sign() * self.n0 * spectrum.k[:, None] @ z[None, :])
+        return np.repeat(spectrum.s[:, None], len(self.z), axis=1) * transform
 
 
 class Dielectric(Material):
@@ -246,6 +274,15 @@ class Dielectric(Material):
     def index_of_refraction(self):
         return self.n0 + self.max_dn * sigmoid(self.deposited_energy, 0, self.max_visible_energy)
 
-    def energy_response(self, energy): # TODO (michalina) what is the right model for that
+    def energy_response(self, energy):  # TODO (michalina) what is the right model for that
         factor = self.min_energy + self.max_d_energy * sigmoid(self.deposited_energy, 0, self.max_visible_energy)
-        return  energy * factor / (self.min_energy + self.max_d_energy)
+        return energy * factor / (self.min_energy + self.max_d_energy)
+
+    def propagate(self, spectrum: Spectrum):
+        pass
+
+
+class LayeredMaterial(object):  # Yet another TODO (michalina)
+
+    def __init__(self, material_list):
+        self.materials = material_list
