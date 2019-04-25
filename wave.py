@@ -10,7 +10,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 
-C = 1.0  # TODO Make some kid of gloal k or global environment?
+
+C = 299792458  # TODO Python module constants convetions
+NANO = 1e-9
+MICRO = 1e-6
+VIOLET = 380 * NANO
+GREEN = 500 * NANO
+RED = 740 * NANO
+OMEGA_STEPS = 100
 
 
 def sigmoid(x, x_min, x_max, percentile=0.95):
@@ -30,7 +37,7 @@ class Spectrum(object):
 
     def __init__(self,
                  spectrum_array: np.ndarray = np.empty(0),
-                 k: np.ndarray = np.linspace(0, np.pi, 100),
+                 k: np.ndarray = np.linspace(2 * np.pi / RED, 2 * np.pi / VIOLET, OMEGA_STEPS),
                  negative: bool = False,
                  **kwargs):
         if spectrum_array.size != 0:
@@ -88,7 +95,7 @@ class Spectrum(object):
     def wavelength(self):
         return 2 * np.pi / self.k
 
-    def plot(self, wavelength=False):  #  TODO(michalina) return the plot
+    def plot(self, wavelength=False):  #  TODO(michalina) return the plot AND make pretty plots like gilles?
         if self.s.size == 0:
             raise ValueError
         x = self.wavelength() if wavelength else self.k
@@ -128,16 +135,16 @@ class DeltaSpectrum(Spectrum):
 class GaussianSpectrum(Spectrum):
     def __init__(self,
                  amplitude: complex = 1,
-                 mean: float = 0.5*np.pi,
-                 std: float = 0.1,
-                 wavenumber: bool = True,
+                 mean: float = GREEN,
+                 std: float = 10 * NANO,
+                 wavenumber: bool = False,
                  **kwargs):
         super().__init__(**kwargs)
         self.s = np.zeros_like(self.k)
         if not wavenumber:
             mean = 2 * np.pi / mean
             std = 2 * np.pi / std
-        self.s = amplitude / (np.sqrt(2*np.pi) * std) * np.exp(- (self.k - mean) ** 2 / (2 * std ** 2))
+        self.s = amplitude * np.exp(- (self.k - mean) ** 2 / (2 * std ** 2))
 
 
 class ChirpedSpectrum(GaussianSpectrum):
@@ -145,6 +152,8 @@ class ChirpedSpectrum(GaussianSpectrum):
                  skew: float = 0,
                  **kwargs):
         super().__init__(**kwargs)
+        if not kwargs["wavenumber"] and skew != 0:
+            skew = 2 * np.pi / skew
         self.s = self.s * np.exp(1j * skew * self.k ** 2)
 
 
@@ -208,7 +217,7 @@ class Material(object):
     def energy_response(self, energy: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
-    def transmitted(self, spectrum: Spectrum) -> Spectrum:  # TODO Do I need this?
+    def transmitted(self, spectrum: Spectrum) -> Spectrum:  # TODO Do I need this?
         raise NotImplementedError
 
     def reflected(self, spectrum: Spectrum) -> Spectrum:
@@ -277,9 +286,6 @@ class Dielectric(Material):
     def energy_response(self, energy):  # TODO (michalina) what is the right model for that
         factor = self.min_energy + self.max_d_energy * sigmoid(self.deposited_energy, 0, self.max_visible_energy)
         return energy * factor / (self.min_energy + self.max_d_energy)
-
-    def propagate(self, spectrum: Spectrum):
-        pass
 
 
 class LayeredMaterial(object):  # Yet another TODO (michalina)
