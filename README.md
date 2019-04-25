@@ -33,5 +33,3 @@ You can also install `Anaconda`, available [here](https://www.anaconda.com).
      Wee need spectrum at each z, might use different discretization for simulation 
      and for plotting. The equation we want to calculate is:
      $$\sum_{k} |A_+(k, z) + A_-(k, z)|^2 dk $$
- - add documentation
- - add tests
