@@ -63,6 +63,12 @@ class Spectrum(object):
             raise NotImplementedError
         return Spectrum(spectrum_array=self.s + other.s)
 
+    def __eq__(self, other):
+        """Overrides the default implementation using almost equal"""
+        if isinstance(other, Spectrum):
+            return np.allclose(self.k, other.k) and np.allclose(self.s, other.s)
+        return False
+
     def amplitude(self, z, time=0) -> np.array:
         transform = np.exp(1j * (z - C * time)[:, None] @ self.k[None, :])
         return self.dk() * transform @ self.s[:, None]
@@ -153,8 +159,10 @@ class ChirpedSpectrum(GaussianSpectrum):
                  skew: float = 0,
                  **kwargs):
         super().__init__(**kwargs)
-        if not kwargs["wavenumber"] and skew != 0:
-            skew = 2 * np.pi / skew
+        if "wavenumber" in kwargs:
+            print("we have wavenumber")
+            if not kwargs["wavenumber"] and skew != 0:
+                skew = 2 * np.pi / skew
         self.s = self.s * np.exp(1j * skew * self.k ** 2)
 
 
@@ -172,7 +180,6 @@ class Interference(object):
                  backward: Spectrum = Spectrum(np.empty(0))):
         assert np.allclose(forward.k, backward.k)
         self.forward = copy.deepcopy(forward)
-        self.backward = copy.deepcopy(backward)
         self.backward = copy.deepcopy(backward)
 
     def __mul__(self, alpha: complex) -> Interference:
@@ -195,7 +202,8 @@ class Interference(object):
     def intensity(self, z, **kwargs):
         correlation = 2 * np.real(
             (self.forward * self.backward).amplitude(z=2 * z, **kwargs))
-        return self.forward.power() + self.backward.power() + correlation
+        return np.squeeze(
+            self.forward.power() + self.backward.power() + correlation)
 
     def dk(self):
         return self.forward.dk()
@@ -255,9 +263,9 @@ class FixedDielectric(Material):
     that cannot be modified"""
 
     def __init__(self, **kwargs):
-        if not isinstance(kwargs["n0"], (complex, float, int)):
-            raise ValueError("Fixed dielectric must have constant index n0")
         super().__init__(**kwargs)
+        if not isinstance(self.n0, (complex, float, int)):
+            raise ValueError("Fixed dielectric must have constant index n0")
 
     def index_of_refraction(self):
         return self.n0 * np.ones_like(self.z)
@@ -277,10 +285,10 @@ class FixedDielectric(Material):
         if sign == 1:
             z = self.z - self.z[0]
         elif sign == -1:
-            z = self.z - self.z[-1]
+            z = self.z[-1] - self.z
         else:
             raise ValueError("Sign has to have value 1 or -1")
-        transform = np.exp(1j * sign * self.n0 * spectrum.k[:, None] @ z[None, :])
+        transform = np.exp(1j * self.n0 * spectrum.k[:, None] @ z[None, :])
         return np.repeat(spectrum.s[:, None], len(self.z), axis=1) * transform
 
 
@@ -304,7 +312,10 @@ class Dielectric(Material):
         return self.n0 + self.max_dn * sigmoid(self.deposited_energy, 0, self.max_visible_energy)
 
     def energy_response(self, energy):
-        factor = self.min_energy + self.max_d_energy * sigmoid(self.deposited_energy, 0, self.max_visible_energy)
+        factor = self.min_energy + self.max_d_energy * sigmoid(
+            self.deposited_energy,
+            0,
+            self.max_visible_energy)
         return energy * factor / (self.min_energy + self.max_d_energy)
 
 
