@@ -32,9 +32,9 @@ def propagation_matrix(n: complex, dz: float, k: float, backward: bool = False) 
     phi = n*dz*k
     matrix[0, 0] = np.exp(1j*phi)
     if not backward:
-        matrix[1, 1] = np.exp(1j * phi.conjugate())
+        matrix[1, 1] = np.exp(-1j * phi)  # TODO should this be conjugate or not?
     else:
-        matrix[1, 1] = np.exp(-1j * phi.conjugate())
+        matrix[1, 1] = np.exp(1j * phi)
     return matrix
 
 

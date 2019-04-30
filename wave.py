@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 from typing import Union
+import matrix_theory as mt
 
 
 C = 299792458
@@ -19,7 +20,7 @@ RED = 740 * NANO
 OMEGA_STEPS = 100
 
 
-def sigmoid(x, x_min, x_max, percentile=0.95):
+def sigmoid(x, x_min, x_max, percentile=0.01):
     """Function that calculates sigmoid saturating around given values"""
     rate = - 2 * np.log(percentile) / (x_max - x_min)
     center = (x_min + x_max) / 2
@@ -47,7 +48,7 @@ class Spectrum(object):
         if spectrum_array.size != 0 and spectrum_array.size != self.k.size:
             raise ValueError(
                 "The spectrum_array must be of len(Spectrum.k), default {}".format(OMEGA_STEPS))
-        self.s = spectrum_array
+        self.s = np.array(spectrum_array, dtype=complex)
 
     def __mul__(self, other) -> Spectrum:
         if isinstance(other, (complex, float, int)):
@@ -71,7 +72,7 @@ class Spectrum(object):
 
     def amplitude(self, z, time=0) -> np.array:
         transform = np.exp(1j * (z - C * time)[:, None] @ self.k[None, :])
-        return self.dk() * transform @ self.s[:, None]
+        return self.dk() * transform @ self.s[:, None]  # TODO why the resulting amplitudes are so big?
 
     def power_spectrum(self):
         return np.abs(self.s) ** 2
@@ -166,7 +167,7 @@ class ChirpedSpectrum(GaussianSpectrum):
         self.s = self.s * np.exp(1j * skew * self.k ** 2)
 
 
-class Interference(object):
+class Interference(object):  # TODO(michalina) remove the interference at all and replace with empty space material?
     """A class describing superposition of two waves going in opposite
     directions
 
@@ -181,6 +182,7 @@ class Interference(object):
         assert np.allclose(forward.k, backward.k)
         self.forward = copy.deepcopy(forward)
         self.backward = copy.deepcopy(backward)
+        self.k = self.forward.k
 
     def __mul__(self, alpha: complex) -> Interference:
         return Interference(self.forward * alpha, self.backward * alpha)
@@ -215,11 +217,15 @@ class Material(object):
     """An abstract class describing a material in which the waves can propagate
 
     Attributes:
-        z: array of positions at which the material properties are described
-        n0: basic index of refraction
+        z: array of positions at which there are material or index of refraction
+        boundaries, and at which the wave is evaluated if propagated through
+        the dielectric
+        n0: basic index of refraction,
         deposited_energy: energy currently deposited in the material,
-        initialised to 0
-        length: total length of the material
+        initialised to np.array of zeros, of length one less than z_boundary,
+        because the energy and changes in the index of refraction happen
+        between the boundaries, TODO
+        length: total length of the material.
     """
 
     def __init__(self,
@@ -229,33 +235,51 @@ class Material(object):
         assert np.imag(n0) >= 0
         self.z = z
         self.n0 = n0
-        self.deposited_energy = np.zeros_like(z)
+        self.deposited_energy = np.zeros(len(z))
         self.length = z[-1] - z[0]
 
     def index_of_refraction(self) -> np.ndarray:
+        """Function calculating index of refraction between each two boundaries
+
+        Returns:
+            np.array of length(self.boundary_z) of complex values of index of
+            refraction. Since index is defined between boundaries, the last
+            value is a dummy index, set to default value. It is set like this
+            for plotting purposes, and shouldn't be used.
+        """
         raise NotImplementedError
 
     def energy_response(self, energy: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
-    def transmitted(self, spectrum: Spectrum) -> Spectrum:
-        raise NotImplementedError
-
-    def reflected(self, spectrum: Spectrum) -> Spectrum:
+    def material_matrix(self, k: float, backward: bool = False) -> np.ndarray:
         raise NotImplementedError
 
     def energy_distribution(self, itf: Interference) -> np.ndarray:
-        total_amplitude = self.propagate(itf.forward, sign=1)\
-                          + self.propagate(itf.backward, sign=-1)
-        return np.sum((np.abs(total_amplitude) ** 2), axis=0) * itf.dk()
+        raise NotImplementedError
 
     def record(self, interference: Interference):
-        energy = self.energy_distribution(interference)
+        energy = self.energy_distribution(interference) # TODO store energy somewhere for plotting?
         self.deposited_energy += self.energy_response(energy)
 
-    def propagate(self, spectrum: Spectrum, sign: int = 1) -> np.array:
-        """Calculate energy profile at each point of dielectric at each frequency"""
-        raise NotImplementedError
+    def plot(self, plot_imaginary=True, alpha=1):
+        index = self.index_of_refraction()
+        plt.step(self.z,
+                 np.real(index),
+                 where='post',
+                 label="real part",
+                 alpha=alpha)
+        if plot_imaginary:
+            plt.step(self.z,
+                     np.imag(index),
+                     where="post",
+                     label="imaginary part",
+                     alpha=alpha)
+        plt.xlabel("z")
+        plt.title("Index of refraction")
+        plt.legend()
+
+    # TODO(michalina) add reflection and transmission calculated from the matrix
 
 
 class FixedDielectric(Material):
@@ -273,15 +297,13 @@ class FixedDielectric(Material):
     def energy_response(self, energy):
         return np.zeros_like(energy)
 
-    def transmitted(self, spectrum):
-        spectrum = copy.deepcopy(spectrum)
-        spectrum.shift(self.length * self.n0)
-        return spectrum
+    def energy_distribution(self, itf: Interference):
+        total_amplitude = self.propagate(itf.forward, sign=1)\
+                          + self.propagate(itf.backward, sign=-1)
+        return np.sum((np.abs(total_amplitude) ** 2), axis=0) * itf.dk()
 
-    def reflected(self, spectrum):
-        return 0 * spectrum
-
-    def propagate(self, spectrum, sign=1):  # TODO make it an enum?
+    def propagate(self, spectrum, sign=1):
+        # TODO document dimensions of this thing
         if sign == 1:
             z = self.z - self.z[0]
         elif sign == -1:
@@ -291,10 +313,15 @@ class FixedDielectric(Material):
         transform = np.exp(1j * self.n0 * spectrum.k[:, None] @ z[None, :])
         return np.repeat(spectrum.s[:, None], len(self.z), axis=1) * transform
 
+    def material_matrix(self, k, backward=False):
+        return mt.propagation_matrix(self.n0, self.length, k, backward=backward)
+
 
 class Dielectric(Material):
     """A class describing a dielectric with index of refraction that can
-    be modified by a set of heuristics"""
+    be modified by a set of heuristics
+
+    #TODO(michalina) document this heuristics"""
 
     def __init__(self,
                  max_dn,
@@ -306,17 +333,79 @@ class Dielectric(Material):
         self.max_dn = max_dn
         self.max_visible_energy = max_visible_energy
         self.min_energy = min_energy
-        self.max_d_energy = max_energy - min_energy
+        self.max_energy = max_energy
 
     def index_of_refraction(self):
-        return self.n0 + self.max_dn * sigmoid(self.deposited_energy, 0, self.max_visible_energy)
+        # TODO fix the percentiles to something that makes sense?
+        index = self.n0 + self.max_dn * sigmoid(self.deposited_energy,
+                                                0,
+                                                self.max_visible_energy)
+        index[-1] = index[-2]
+        return index
+    #
+    # TODO (michalina) how this should be done?
+    # def energy_response(self, energy):
+    #     factor = self.min_energy + self.max_d_energy * sigmoid(
+    #         self.deposited_energy,
+    #         0,
+    #         self.max_visible_energy)
+    #     return energy * factor / (self.min_energy + self.max_d_energy)
 
-    def energy_response(self, energy):
-        factor = self.min_energy + self.max_d_energy * sigmoid(
-            self.deposited_energy,
-            0,
-            self.max_visible_energy)
-        return energy * factor / (self.min_energy + self.max_d_energy)
+    def energy_response(self, energy: np.ndarray):
+        return sigmoid(energy, self.min_energy, self.max_energy)
+
+    def material_matrix(self, k, backward=False):
+        ns = self.index_of_refraction()
+        matrix = np.eye(2)
+        for idx in range(len(self.z) - 1):
+            matrix = mt.propagation_matrix(
+                ns[idx],
+                self.z[idx + 1] - self.z[idx],
+                k) @ matrix
+            # add boundary:
+            # the last element of ns does not correspond to any physical space
+            # thus the last boundary is between second to last and last index
+            if idx < len(self.z) - 2:
+                matrix = mt.boundary_matrix(ns[idx], ns[idx+1]) @ matrix  # TODO is this consistent?
+        if backward:
+            matrix = mt.swap_waves(matrix)
+        return matrix
+
+    def energy_distribution(self, itf: Interference):
+        left_backward = Spectrum(itf.backward.k)
+        right_forward = Spectrum(itf.forward.k)
+        # Calculate the outgoing waves TODO better logic? tensors?
+        for idx, k in enumerate(itf.k):
+            incoming = np.array(
+                [itf.forward.s[idx], itf.backward.s[idx]])[:, None]
+            outgoing = self.material_matrix(k, backward=True) @ incoming
+            outgoing = outgoing.squeeze()
+            right_forward.s[idx] = outgoing[0]
+            left_backward.s[idx] = outgoing[1]
+        # Calculate the wave at each step, moving forward
+        energy = np.zeros_like(self.z)
+        previous_backward = copy.deepcopy(left_backward)
+        previous_forward = copy.deepcopy(itf.forward)
+        next_forward = copy.deepcopy(left_backward)  # TODO better spectrum creation?
+        next_backward = copy.deepcopy(left_backward)
+        ns = self.index_of_refraction()
+        for idx_z in range(len(self.z) - 1):  # TODO better indexes
+            for idx, k in enumerate(itf.k):
+                left = np.array(
+                    [previous_forward.s[idx], previous_backward.s[idx]])[:, None]
+                matrix = mt.propagation_matrix(
+                    ns[idx_z],
+                    self.z[idx_z+1] - self.z[idx_z],
+                    k)
+                if idx_z > 0:
+                    matrix = matrix @  mt.boundary_matrix(ns[idx_z-1], ns[idx_z])
+                right = (matrix @ left).squeeze()
+                next_forward.s[idx] = right[0]
+                next_backward.s[idx] = right[1]
+                energy[idx_z] += np.abs(np.sum(right))**2 * itf.dk()
+            previous_backward = copy.deepcopy(next_backward)
+            previous_forward = copy.deepcopy(next_forward)
+        return energy
 
 
 class LayeredMaterial(object):

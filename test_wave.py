@@ -50,6 +50,12 @@ class TestMaterial(unittest.TestCase):
         np.testing.assert_almost_equal(analytic, computed)
         self.assertTrue(np.allclose(analytic, computed))
 
+class TestSigmoid(unittest.TestCase):
+
+    def test_percentile(self):
+        perc = 0.01
+        self.assertTrue(w.sigmoid(0, 0, 1, percentile=perc) < perc)
+        self.assertTrue(w.sigmoid(1, 0, 1, percentile=perc) > 1 - perc)
 
 if __name__ == '__main__':
     unittest.main()
