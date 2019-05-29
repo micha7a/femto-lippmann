@@ -25,30 +25,23 @@ class TestSpectrum(unittest.TestCase):
         self.assertNotEqual(gaussian, chirped)
 
 
-class TestInterference(unittest.TestCase):
-    def test_creation(self):
-        s = w.GaussianSpectrum()
-        itf = w.Interference(s, s)
-        self.assertEqual(itf.forward, itf.backward)
-        itf.forward *= 2
-        self.assertNotEqual(itf.forward, itf.backward)
-
-
 class TestMaterial(unittest.TestCase):
     z = np.linspace(-5*w.MICRO, 5*w.MICRO)
 
     def test_creation(self):
-        dl = w.FixedDielectric(z=self.z)
+        dl = w.ConstantMaterial(z=self.z)
         self.assertEqual(1, dl.n0)
 
     def test_interference(self):
-        s = w.GaussianSpectrum()
-        itf = w.Interference(s, s)
-        dl = w.FixedDielectric(z=self.z)
-        analytic = itf.intensity(z=self.z)
-        computed = dl.energy_distribution(itf)
+        s_f = w.GaussianSpectrum()
+        s_b = w.GaussianSpectrum()
+        dl = w.ConstantMaterial(z=self.z)
+        empty_space = w.EmptySpace(z=self.z)
+        analytic = empty_space.energy_distribution(s_f, s_b)
+        computed = dl.energy_distribution(s_f, s_b)
         np.testing.assert_almost_equal(analytic, computed)
         self.assertTrue(np.allclose(analytic, computed))
+
 
 class TestSigmoid(unittest.TestCase):
 

@@ -42,6 +42,10 @@ class Spectrum(object):
     """
     k = np.linspace(2 * np.pi / RED, 2 * np.pi / VIOLET, OMEGA_STEPS)
 
+    @classmethod
+    def dk(cls):
+        return cls.k[1] - cls.k[0]
+
     def __init__(self,
                  spectrum_array: np.ndarray = np.empty(0),
                  **kwargs):
@@ -83,9 +87,6 @@ class Spectrum(object):
     def from_amplitude(self, amplitude, z, time=0):
         transform = np.exp(1j * self.k[:, None] @ (- z - C * time)[None, :])
         self.s = (z[1] - z[0]) * transform @ amplitude[:, None]
-
-    def dk(self):
-        return self.k[1] - self.k[0]
 
     def delay(self, time):
         self.s = self.s * np.exp(1j * C * time * self.k)
@@ -167,52 +168,6 @@ class ChirpedSpectrum(GaussianSpectrum):
         self.s = self.s * np.exp(1j * skew * self.k ** 2)
 
 
-class Interference(object):  # TODO(michalina) remove the interference at all and replace with empty space material?
-    """A class describing superposition of two waves going in opposite
-    directions
-
-    Attributes:
-        forward: a wave propagating towards positive z (left to right)
-        backward: a wave propagating towards negative z (right to left)
-    """
-
-    def __init__(self,
-                 forward: Spectrum = Spectrum(np.empty(0)),
-                 backward: Spectrum = Spectrum(np.empty(0))):
-        assert np.allclose(forward.k, backward.k)
-        self.forward = copy.deepcopy(forward)
-        self.backward = copy.deepcopy(backward)
-        self.k = self.forward.k
-
-    def __mul__(self, alpha: complex) -> Interference:
-        return Interference(self.forward * alpha, self.backward * alpha)
-
-    __rmul__ = __mul__
-
-    def amplitude(self, **kwargs):
-        return self.backward.amplitude(**kwargs) + self.forward.amplitude(**kwargs)
-
-    def __add__(self, other: Interference) -> Interference:
-        return Interference(self.forward + other.forward,
-                            self.backward + other.backward)
-
-    __radd__ = __add__
-
-    def power_spectrum(self):
-        return self.forward.power_spectrum(), self.backward.power_spectrum()
-
-    def intensity(self, z, **kwargs):
-        correlation = 2 * np.real(
-            (self.forward * self.backward).amplitude(z=2 * z, **kwargs))
-        return np.squeeze(
-            self.forward.power() + self.backward.power() + correlation)
-
-    def dk(self):
-        return self.forward.dk()
-
-    # TODO(michalina) implement better getters? def __get__(self, instance, owner)
-
-
 class Material(object):
     """An abstract class describing a material in which the waves can propagate
 
@@ -255,11 +210,11 @@ class Material(object):
     def material_matrix(self, k: float, backward: bool = False) -> np.ndarray:
         raise NotImplementedError
 
-    def energy_distribution(self, itf: Interference) -> np.ndarray:
+    def energy_distribution(self, forward_wave: Spectrum, backward_wave: Spectrum) -> np.ndarray:
         raise NotImplementedError
 
-    def record(self, interference: Interference):
-        energy = self.energy_distribution(interference) # TODO store energy somewhere for plotting?
+    def record(self, forward_wave: Spectrum, backward_wave: Spectrum):
+        energy = self.energy_distribution(forward_wave, backward_wave)  # TODO store energy somewhere for plotting?
         self.deposited_energy += self.energy_response(energy)
 
     def plot(self, plot_imaginary=True, alpha=1):
@@ -282,7 +237,7 @@ class Material(object):
     # TODO(michalina) add reflection and transmission calculated from the matrix
 
 
-class FixedDielectric(Material):
+class ConstantMaterial(Material):
     """A class describing a dielectric with constant index of refraction n0
     that cannot be modified"""
 
@@ -297,10 +252,10 @@ class FixedDielectric(Material):
     def energy_response(self, energy):
         return np.zeros_like(energy)
 
-    def energy_distribution(self, itf: Interference):
-        total_amplitude = self.propagate(itf.forward, sign=1)\
-                          + self.propagate(itf.backward, sign=-1)
-        return np.sum((np.abs(total_amplitude) ** 2), axis=0) * itf.dk()
+    def energy_distribution(self, forward_wave, backward_wave):
+        total_amplitude = self.propagate(forward_wave, sign=1)\
+                          + self.propagate(backward_wave, sign=-1)
+        return np.sum((np.abs(total_amplitude) ** 2), axis=0) * Spectrum.dk()
 
     def propagate(self, spectrum, sign=1):
         # TODO document dimensions of this thing
@@ -315,6 +270,26 @@ class FixedDielectric(Material):
 
     def material_matrix(self, k, backward=False):
         return mt.propagation_matrix(self.n0, self.length, k, backward=backward)
+
+
+class EmptySpace(ConstantMaterial):
+    """A class describing empty space with index of refraction 1,
+    that cannot be modified. Used mostly for testing"""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.n0 = 1
+
+    def energy_distribution(self,
+                            forward_wave: Spectrum,
+                            backward_wave: Spectrum) -> np.ndarray:
+        """Different implementation of interference based on correlation rather
+        than matrix theory"""
+
+        correlation = 2 * np.real(
+            (forward_wave * backward_wave).amplitude(z=2 * self.z))
+        return np.squeeze(
+            forward_wave.power() + backward_wave.power() + correlation)
 
 
 class Dielectric(Material):
@@ -371,13 +346,13 @@ class Dielectric(Material):
             matrix = mt.swap_waves(matrix)
         return matrix
 
-    def energy_distribution(self, itf: Interference):
-        left_backward = Spectrum(itf.backward.k)
-        right_forward = Spectrum(itf.forward.k)
+    def energy_distribution(self, forward_wave, backward_wave):
+        left_backward = Spectrum(Spectrum.k)
+        right_forward = Spectrum(Spectrum.k)
         # Calculate the outgoing waves TODO better logic? tensors?
-        for idx, k in enumerate(itf.k):
+        for idx, k in enumerate(Spectrum.k):
             incoming = np.array(
-                [itf.forward.s[idx], itf.backward.s[idx]])[:, None]
+                [forward_wave.s[idx], backward_wave.s[idx]])[:, None]
             outgoing = self.material_matrix(k, backward=True) @ incoming
             outgoing = outgoing.squeeze()
             right_forward.s[idx] = outgoing[0]
@@ -385,12 +360,12 @@ class Dielectric(Material):
         # Calculate the wave at each step, moving forward
         energy = np.zeros_like(self.z)
         previous_backward = copy.deepcopy(left_backward)
-        previous_forward = copy.deepcopy(itf.forward)
+        previous_forward = copy.deepcopy(forward_wave)
         next_forward = copy.deepcopy(left_backward)  # TODO better spectrum creation?
         next_backward = copy.deepcopy(left_backward)
         ns = self.index_of_refraction()
         for idx_z in range(len(self.z) - 1):  # TODO better indexes
-            for idx, k in enumerate(itf.k):
+            for idx, k in enumerate(Spectrum.k):
                 left = np.array(
                     [previous_forward.s[idx], previous_backward.s[idx]])[:, None]
                 matrix = mt.propagation_matrix(
@@ -402,7 +377,7 @@ class Dielectric(Material):
                 right = (matrix @ left).squeeze()
                 next_forward.s[idx] = right[0]
                 next_backward.s[idx] = right[1]
-                energy[idx_z] += np.abs(np.sum(right))**2 * itf.dk()
+                energy[idx_z] += np.abs(np.sum(right))**2 * Spectrum.dk()
             previous_backward = copy.deepcopy(next_backward)
             previous_forward = copy.deepcopy(next_forward)
         return energy
