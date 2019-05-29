@@ -74,6 +74,9 @@ class Spectrum(object):
             return np.allclose(self.k, other.k) and np.allclose(self.s, other.s)
         return False
 
+    def __copy__(self):
+        return Spectrum(self.s.copy())
+
     def amplitude(self, z, time=0) -> np.array:
         transform = np.exp(1j * (z - C * time)[:, None] @ self.k[None, :])
         return self.dk() * transform @ self.s[:, None]  # TODO why the resulting amplitudes are so big?
@@ -97,7 +100,7 @@ class Spectrum(object):
     def wavelength(self):
         return 2 * np.pi / self.k
 
-    def plot(self, wavelength=False):  #  TODO(michalina) return the plot AND make pretty plots like gilles?
+    def plot(self, wavelength=False):  #  TODO(michalina) return the plot AND make pretty plots like Gilles?
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         x = self.wavelength() if wavelength else self.k
@@ -179,7 +182,7 @@ class Material(object):
         deposited_energy: energy currently deposited in the material,
         initialised to np.array of zeros, of length one less than z_boundary,
         because the energy and changes in the index of refraction happen
-        between the boundaries, TODO
+        between the boundaries TODO
         length: total length of the material.
     """
 
@@ -192,6 +195,7 @@ class Material(object):
         self.n0 = n0
         self.deposited_energy = np.zeros(len(z))
         self.length = z[-1] - z[0]
+        self.recent_energy = np.zeros(len(z))
 
     def index_of_refraction(self) -> np.ndarray:
         """Function calculating index of refraction between each two boundaries
@@ -214,8 +218,8 @@ class Material(object):
         raise NotImplementedError
 
     def record(self, forward_wave: Spectrum, backward_wave: Spectrum):
-        energy = self.energy_distribution(forward_wave, backward_wave)  # TODO store energy somewhere for plotting?
-        self.deposited_energy += self.energy_response(energy)
+        self.recent_energy = self.energy_distribution(forward_wave, backward_wave)
+        self.deposited_energy += self.energy_response(self.recent_energy)
 
     def plot(self, plot_imaginary=True, alpha=1):
         index = self.index_of_refraction()
@@ -253,12 +257,21 @@ class ConstantMaterial(Material):
         return np.zeros_like(energy)
 
     def energy_distribution(self, forward_wave, backward_wave):
-        total_amplitude = self.propagate(forward_wave, sign=1)\
-                          + self.propagate(backward_wave, sign=-1)
+        """Semi-analytic interference calculation, where the amplitude at each
+        point is calculated analytically using _propagate method,
+        but then intensity is calculated numerically point-wise"""
+
+        total_amplitude = self._propagate(forward_wave, sign=1)\
+                          + self._propagate(backward_wave, sign=-1)
         return np.sum((np.abs(total_amplitude) ** 2), axis=0) * Spectrum.dk()
 
-    def propagate(self, spectrum, sign=1):
-        # TODO document dimensions of this thing
+    def _propagate(self, spectrum, sign=1):
+        """Returns amplitude inside material, for each point for each frequency
+
+        The first dimension corresponds to different frequencies, and second
+        to different depths in the material. Thus dimensions of the returned
+        matrix are len(spectrum) x len(z)
+        """
         if sign == 1:
             z = self.z - self.z[0]
         elif sign == -1:
@@ -349,25 +362,25 @@ class Dielectric(Material):
     def energy_distribution(self, forward_wave, backward_wave):
         left_backward = Spectrum(Spectrum.k)
         right_forward = Spectrum(Spectrum.k)
-        # Calculate the outgoing waves TODO better logic? tensors?
-        for idx, k in enumerate(Spectrum.k):
+        # Calculate the outgoing waves
+        for idx_k, k in enumerate(Spectrum.k):
             incoming = np.array(
-                [forward_wave.s[idx], backward_wave.s[idx]])[:, None]
+                [forward_wave.s[idx_k], backward_wave.s[idx_k]])[:, None]
             outgoing = self.material_matrix(k, backward=True) @ incoming
             outgoing = outgoing.squeeze()
-            right_forward.s[idx] = outgoing[0]
-            left_backward.s[idx] = outgoing[1]
+            right_forward.s[idx_k] = outgoing[0]
+            left_backward.s[idx_k] = outgoing[1]
         # Calculate the wave at each step, moving forward
         energy = np.zeros_like(self.z)
         previous_backward = copy.deepcopy(left_backward)
         previous_forward = copy.deepcopy(forward_wave)
-        next_forward = copy.deepcopy(left_backward)  # TODO better spectrum creation?
+        next_forward = copy.deepcopy(left_backward)
         next_backward = copy.deepcopy(left_backward)
         ns = self.index_of_refraction()
-        for idx_z in range(len(self.z) - 1):  # TODO better indexes
-            for idx, k in enumerate(Spectrum.k):
+        for idx_z in range(len(self.z) - 1):
+            for idx_k, k in enumerate(Spectrum.k):
                 left = np.array(
-                    [previous_forward.s[idx], previous_backward.s[idx]])[:, None]
+                    [previous_forward.s[idx_k], previous_backward.s[idx_k]])[:, None]
                 matrix = mt.propagation_matrix(
                     ns[idx_z],
                     self.z[idx_z+1] - self.z[idx_z],
@@ -375,8 +388,8 @@ class Dielectric(Material):
                 if idx_z > 0:
                     matrix = matrix @  mt.boundary_matrix(ns[idx_z-1], ns[idx_z])
                 right = (matrix @ left).squeeze()
-                next_forward.s[idx] = right[0]
-                next_backward.s[idx] = right[1]
+                next_forward.s[idx_k] = right[0]
+                next_backward.s[idx_k] = right[1]
                 energy[idx_z] += np.abs(np.sum(right))**2 * Spectrum.dk()
             previous_backward = copy.deepcopy(next_backward)
             previous_forward = copy.deepcopy(next_forward)
