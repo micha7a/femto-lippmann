@@ -45,14 +45,9 @@ class Spectrum(object):
     def dk(cls):
         return cls.k[1] - cls.k[0]
 
-    def __init__(self,
-                 spectrum_array: np.ndarray = np.empty(0),
-                 name="",
-                 **kwargs):
+    def __init__(self, spectrum_array: np.ndarray = np.empty(0), name="", **kwargs):
         if spectrum_array.size != 0 and spectrum_array.size != self.k.size:
-            raise ValueError(
-                "The spectrum_array must be of len(Spectrum.k), default {}".
-                format(OMEGA_STEPS))
+            raise ValueError("The spectrum_array must be of len(Spectrum.k), default {}".format(OMEGA_STEPS))
         self.s = np.array(spectrum_array, dtype=complex)
         self.name = name
 
@@ -73,18 +68,13 @@ class Spectrum(object):
     def __eq__(self, other):
         """Overrides the default implementation using almost equal"""
         if isinstance(other, Spectrum):
-            return np.allclose(self.k, other.k) and np.allclose(
-                self.s, other.s)
+            return np.allclose(self.k, other.k) and np.allclose(self.s, other.s)
         return False
-
-    def __copy__(self):
-        return Spectrum(self.s.copy())
 
     def amplitude(self, z, time=0) -> np.array:
         transform = np.exp(1j * (z - C * time)[:, None] @ self.k[None, :])
-        return self.dk(
-        ) * transform @ self.s[:,
-                               None]  # TODO why the resulting amplitudes are so big?
+        # TODO why the resulting amplitudes are so big?
+        return self.dk() * transform @ self.s[:, None]
 
     def power_spectrum(self):
         return np.abs(self.s)**2
@@ -113,10 +103,7 @@ class Spectrum(object):
             raise ValueError("Can't plot empty spectrum")
         x = self.wavelength() if wavelength else self.k
         ax.plot(x, np.real(self.s), label="spectrum {}".format(self.name))
-        ax.plot(
-            x,
-            self.power_spectrum(),
-            label="power spectrum {}".format(self.name))
+        ax.plot(x, self.power_spectrum(), label="power spectrum {}".format(self.name))
         ax.set_xlabel(r"$\lambda$" if wavelength else r"k")
         ax.legend()
 
@@ -142,14 +129,12 @@ class DeltaSpectrum(Spectrum):
         self.s = np.zeros_like(self.k)
         if wavenumber is None:
             if wavelength is None:
-                raise ValueError(
-                    "One of wavelength, wavenumber hast o be provided")
+                raise ValueError("One of wavelength, wavenumber hast o be provided")
             wavenumber = 2 * np.pi / wavelength
         idx = int((wavenumber - self.k[0]) / self.dk())
         if idx > len(self.k) or idx < 0:
-            raise ValueError(
-                "Wavenumber {} effectively outside the spectrum: {}-{}".format(
-                    wavenumber, self.k[0], self.k[-1]))
+            raise ValueError("Wavenumber {} effectively outside the spectrum: {}-{}".format(
+                wavenumber, self.k[0], self.k[-1]))
         self.s[idx] = 1
         self.set_energy(energy)
 
@@ -201,11 +186,7 @@ class Material(object):
         length: total length of the material.
     """
 
-    def __init__(self,
-                 z: np.ndarray,
-                 n0: Union[complex, np.ndarray] = 1,
-                 name: str = "",
-                 **kwargs):
+    def __init__(self, z: np.ndarray, n0: Union[complex, np.ndarray] = 1, name: str = "", **kwargs):
         assert np.imag(n0) >= 0
         self.z = z
         self.n0 = n0
@@ -231,30 +212,18 @@ class Material(object):
     def material_matrix(self, k: float, backward: bool = False) -> np.ndarray:
         raise NotImplementedError
 
-    def energy_distribution(self, forward_wave: Spectrum,
-                            backward_wave: Spectrum) -> np.ndarray:
+    def energy_distribution(self, forward_wave: Spectrum, backward_wave: Spectrum) -> np.ndarray:
         raise NotImplementedError
 
     def record(self, forward_wave: Spectrum, backward_wave: Spectrum):
-        self.recent_energy = self.energy_distribution(forward_wave,
-                                                      backward_wave)
+        self.recent_energy = self.energy_distribution(forward_wave, backward_wave)
         self.deposited_energy += self.energy_response(self.recent_energy)
 
     def plot(self, ax, plot_imaginary=True, alpha=1):
         index = self.index_of_refraction()
-        ax.step(
-            self.z,
-            np.real(index),
-            where='post',
-            label="real part {}".format(self.name),
-            alpha=alpha)
+        ax.step(self.z, np.real(index), where='post', label="real part {}".format(self.name), alpha=alpha)
         if plot_imaginary:
-            ax.step(
-                self.z,
-                np.imag(index),
-                where="post",
-                label="imaginary part {}".format(self.name),
-                alpha=alpha)
+            ax.step(self.z, np.imag(index), where="post", label="imaginary part {}".format(self.name), alpha=alpha)
         ax.set_xlabel("z")
         ax.set_title("index of refraction")
         ax.legend()
@@ -282,9 +251,7 @@ class ConstantMaterial(Material):
         point is calculated analytically using _propagate method,
         but then intensity is calculated numerically point-wise"""
 
-        total_amplitude = self._propagate(
-            forward_wave, sign=1) + self._propagate(
-                backward_wave, sign=-1)
+        total_amplitude = self._propagate(forward_wave, sign=1) + self._propagate(backward_wave, sign=-1)
         return np.sum((np.abs(total_amplitude)**2), axis=0) * Spectrum.dk()
 
     def _propagate(self, spectrum, sign=1):
@@ -304,8 +271,7 @@ class ConstantMaterial(Material):
         return np.repeat(spectrum.s[:, None], len(self.z), axis=1) * transform
 
     def material_matrix(self, k, backward=False):
-        return mt.propagation_matrix(
-            self.n0, self.length, k, backward=backward)
+        return mt.propagation_matrix(self.n0, self.length, k, backward=backward)
 
 
 class EmptySpace(ConstantMaterial):
@@ -316,15 +282,12 @@ class EmptySpace(ConstantMaterial):
         super().__init__(**kwargs)
         self.n0 = 1
 
-    def energy_distribution(self, forward_wave: Spectrum,
-                            backward_wave: Spectrum) -> np.ndarray:
+    def energy_distribution(self, forward_wave: Spectrum, backward_wave: Spectrum) -> np.ndarray:
         """Different implementation of interference based on correlation rather
         than matrix theory"""
 
-        correlation = 2 * np.real(
-            (forward_wave * backward_wave).amplitude(z=2 * self.z))
-        return np.squeeze(forward_wave.total_energy() +
-                          backward_wave.total_energy() + correlation)
+        correlation = 2 * np.real((forward_wave * backward_wave).amplitude(z=2 * self.z))
+        return np.squeeze(forward_wave.total_energy() + backward_wave.total_energy() + correlation)
 
 
 class SimpleDielectric(Material):
@@ -340,11 +303,7 @@ class SimpleDielectric(Material):
         - energy of the threshold is somewhere below 150nJ, but it's not well known
         - the max energy can be 100 or 1000 times bigger than the threshold energy"""
 
-    def __init__(self,
-                 min_energy=100 * NANO,
-                 max_energy=10 * MICRO,
-                 max_dn=1e-3,
-                 **kwargs):
+    def __init__(self, min_energy=100 * NANO, max_energy=10 * MICRO, max_dn=1e-3, **kwargs):
         super().__init__(**kwargs)
         self.max_dn = max_dn
         self.min_energy = min_energy
@@ -352,8 +311,7 @@ class SimpleDielectric(Material):
 
     def index_of_refraction(self):
         """Hard threshold"""
-        index = self.n0 + self.max_dn * np.clip(
-            self.deposited_energy / self.max_energy, a_max=1, a_min=None)
+        index = self.n0 + self.max_dn * np.clip(self.deposited_energy / self.max_energy, a_max=1, a_min=None)
         # fill dummy index of refraction
         index[-1] = index[-2]
         return index
@@ -366,14 +324,12 @@ class SimpleDielectric(Material):
         ns = self.index_of_refraction()
         matrix = np.eye(2)
         for idx in range(len(self.z) - 1):
-            matrix = mt.propagation_matrix(
-                ns[idx], self.z[idx + 1] - self.z[idx], k) @ matrix
+            matrix = mt.propagation_matrix(ns[idx], self.z[idx + 1] - self.z[idx], k) @ matrix
             # add boundary:
             # the last element of ns does not correspond to any physical space
             # thus the last boundary is between second to last and last index
             if idx < len(self.z) - 2:
-                matrix = mt.boundary_matrix(
-                    ns[idx], ns[idx + 1]) @ matrix  # TODO is this consistent?
+                matrix = mt.boundary_matrix(ns[idx], ns[idx + 1]) @ matrix  # TODO is this consistent?
         if backward:
             matrix = mt.swap_waves(matrix)
         return matrix
@@ -383,8 +339,7 @@ class SimpleDielectric(Material):
         right_forward = Spectrum(Spectrum.k)
         # Calculate the outgoing waves
         for idx_k, k in enumerate(Spectrum.k):
-            incoming = np.array(
-                [forward_wave.s[idx_k], backward_wave.s[idx_k]])[:, None]
+            incoming = np.array([forward_wave.s[idx_k], backward_wave.s[idx_k]])[:, None]
             outgoing = self.material_matrix(k, backward=True) @ incoming
             outgoing = outgoing.squeeze()
             right_forward.s[idx_k] = outgoing[0]
@@ -398,14 +353,10 @@ class SimpleDielectric(Material):
         ns = self.index_of_refraction()
         for idx_z in range(len(self.z) - 1):
             for idx_k, k in enumerate(Spectrum.k):
-                left = np.array(
-                    [previous_forward.s[idx_k],
-                     previous_backward.s[idx_k]])[:, None]
-                matrix = mt.propagation_matrix(
-                    ns[idx_z], self.z[idx_z + 1] - self.z[idx_z], k)
+                left = np.array([previous_forward.s[idx_k], previous_backward.s[idx_k]])[:, None]
+                matrix = mt.propagation_matrix(ns[idx_z], self.z[idx_z + 1] - self.z[idx_z], k)
                 if idx_z > 0:
-                    matrix = matrix @ mt.boundary_matrix(
-                        ns[idx_z - 1], ns[idx_z])
+                    matrix = matrix @ mt.boundary_matrix(ns[idx_z - 1], ns[idx_z])
                 right = (matrix @ left).squeeze()
                 next_forward.s[idx_k] = right[0]
                 next_backward.s[idx_k] = right[1]
