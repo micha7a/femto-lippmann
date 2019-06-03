@@ -35,7 +35,7 @@ You can also install `Anaconda`, available [here](https://www.anaconda.com).
     - random phase
     - printing without interference 
  - test different material models
- - return plots instead of plotting
+ - add example reflections
      
      
 ## License

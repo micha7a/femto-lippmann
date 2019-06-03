@@ -5,7 +5,6 @@ A 1D Wave module for Femto-Lippmann project
 from __future__ import annotations
 
 import numpy as np
-import matplotlib.pyplot as plt
 import copy
 from typing import Union
 import matrix_theory as mt
@@ -17,6 +16,7 @@ VIOLET = 380 * NANO
 GREEN = 500 * NANO
 RED = 740 * NANO
 OMEGA_STEPS = 100
+SINGLE_PULSE_ENERGY = 50 * NANO  # nanoJules
 
 
 def sigmoid(x, x_min, x_max, percentile=0.01):
@@ -45,12 +45,16 @@ class Spectrum(object):
     def dk(cls):
         return cls.k[1] - cls.k[0]
 
-    def __init__(self, spectrum_array: np.ndarray = np.empty(0), **kwargs):
+    def __init__(self,
+                 spectrum_array: np.ndarray = np.empty(0),
+                 name="",
+                 **kwargs):
         if spectrum_array.size != 0 and spectrum_array.size != self.k.size:
             raise ValueError(
                 "The spectrum_array must be of len(Spectrum.k), default {}".
                 format(OMEGA_STEPS))
         self.s = np.array(spectrum_array, dtype=complex)
+        self.name = name
 
     def __mul__(self, other) -> Spectrum:
         if isinstance(other, (complex, float, int)):
@@ -85,8 +89,11 @@ class Spectrum(object):
     def power_spectrum(self):
         return np.abs(self.s)**2
 
-    def power(self):
+    def total_energy(self):
         return np.sum(self.power_spectrum()) * self.dk()
+
+    def set_energy(self, energy):
+        self.s = self.s / np.sqrt(self.total_energy()) * np.sqrt(energy)
 
     def from_amplitude(self, amplitude, z, time=0):
         transform = np.exp(1j * self.k[:, None] @ (-z - C * time)[None, :])
@@ -101,31 +108,33 @@ class Spectrum(object):
     def wavelength(self):
         return 2 * np.pi / self.k
 
-    def plot(
-            self, wavelength=False
-    ):  #  TODO(michalina) return the plot AND make pretty plots like Gilles?
+    def plot(self, ax, wavelength=False):
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         x = self.wavelength() if wavelength else self.k
-        plt.plot(x, np.real(self.s), label="spectrum")
-        plt.plot(x, self.power_spectrum(), label="power spectrum")
-        plt.xlabel(r"$\lambda$" if wavelength else r"k")
-        plt.legend()
+        ax.plot(x, np.real(self.s), label="spectrum {}".format(self.name))
+        ax.plot(
+            x,
+            self.power_spectrum(),
+            label="power spectrum {}".format(self.name))
+        ax.set_xlabel(r"$\lambda$" if wavelength else r"k")
+        ax.legend()
 
-    def plot_amplitude(self, z):
+    def plot_amplitude(self, z, ax):
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         amplitude = self.amplitude(z)
-        plt.plot(z, amplitude, label="amplitude")
-        plt.plot(z, np.abs(amplitude), label="envelope")
-        plt.legend()
+        ax.plot(z, amplitude, label="amplitude {}".format(self.name))
+        ax.plot(z, np.abs(amplitude), label="envelope {}".format(self.name))
+        ax.set_xlabel("z")
+        ax.legend()
 
 
 class DeltaSpectrum(Spectrum):
     """A class representing a single frequency wave."""
 
     def __init__(self,
-                 amplitude: complex = 1,
+                 energy: float = SINGLE_PULSE_ENERGY,
                  wavelength: float = None,
                  wavenumber: float = None,
                  **kwargs):
@@ -141,7 +150,8 @@ class DeltaSpectrum(Spectrum):
             raise ValueError(
                 "Wavenumber {} effectively outside the spectrum: {}-{}".format(
                     wavenumber, self.k[0], self.k[-1]))
-        self.s[idx] = amplitude
+        self.s[idx] = 1
+        self.set_energy(energy)
 
 
 class GaussianSpectrum(Spectrum):
@@ -149,7 +159,7 @@ class GaussianSpectrum(Spectrum):
     it is not a gaussian beam."""
 
     def __init__(self,
-                 amplitude: complex = 1,
+                 energy: float = SINGLE_PULSE_ENERGY,
                  mean: float = GREEN,
                  std: float = 10 * NANO,
                  wavenumber: bool = False,
@@ -159,7 +169,8 @@ class GaussianSpectrum(Spectrum):
         if not wavenumber:
             mean = 2 * np.pi / mean
             std = 2 * np.pi / std
-        self.s = amplitude * np.exp(-(self.k - mean)**2 / (2 * std**2))
+        self.s = np.exp(-(self.k - mean)**2 / (2 * std**2))
+        self.set_energy(energy)
 
 
 class ChirpedSpectrum(GaussianSpectrum):
@@ -193,6 +204,7 @@ class Material(object):
     def __init__(self,
                  z: np.ndarray,
                  n0: Union[complex, np.ndarray] = 1,
+                 name: str = "",
                  **kwargs):
         assert np.imag(n0) >= 0
         self.z = z
@@ -200,6 +212,7 @@ class Material(object):
         self.deposited_energy = np.zeros(len(z))
         self.length = z[-1] - z[0]
         self.recent_energy = np.zeros(len(z))
+        self.name = name
 
     def index_of_refraction(self) -> np.ndarray:
         """Function calculating index of refraction between each two boundaries
@@ -227,24 +240,24 @@ class Material(object):
                                                       backward_wave)
         self.deposited_energy += self.energy_response(self.recent_energy)
 
-    def plot(self, plot_imaginary=True, alpha=1):
+    def plot(self, ax, plot_imaginary=True, alpha=1):
         index = self.index_of_refraction()
-        plt.step(
+        ax.step(
             self.z,
             np.real(index),
             where='post',
-            label="real part",
+            label="real part {}".format(self.name),
             alpha=alpha)
         if plot_imaginary:
-            plt.step(
+            ax.step(
                 self.z,
                 np.imag(index),
                 where="post",
-                label="imaginary part",
+                label="imaginary part {}".format(self.name),
                 alpha=alpha)
-        plt.xlabel("z")
-        plt.title("Index of refraction")
-        plt.legend()
+        ax.set_xlabel("z")
+        ax.set_title("index of refraction")
+        ax.legend()
 
     # TODO(michalina) add reflection and transmission calculated from the matrix
 
@@ -269,8 +282,9 @@ class ConstantMaterial(Material):
         point is calculated analytically using _propagate method,
         but then intensity is calculated numerically point-wise"""
 
-        total_amplitude = self._propagate(forward_wave, sign=1)\
-                          + self._propagate(backward_wave, sign=-1)
+        total_amplitude = self._propagate(
+            forward_wave, sign=1) + self._propagate(
+                backward_wave, sign=-1)
         return np.sum((np.abs(total_amplitude)**2), axis=0) * Spectrum.dk()
 
     def _propagate(self, spectrum, sign=1):
@@ -309,8 +323,8 @@ class EmptySpace(ConstantMaterial):
 
         correlation = 2 * np.real(
             (forward_wave * backward_wave).amplitude(z=2 * self.z))
-        return np.squeeze(forward_wave.power() + backward_wave.power() +
-                          correlation)
+        return np.squeeze(forward_wave.total_energy() +
+                          backward_wave.total_energy() + correlation)
 
 
 class SimpleDielectric(Material):
@@ -321,9 +335,16 @@ class SimpleDielectric(Material):
         - energy deposited in the material is linear with the intensity,
         if it's above a min_energy threshold, else it's zero
         - change of the index of refraction in the material is linear
-        with deposited energy, up to max_energy, where it is constantly max_dn"""
+        with deposited energy, up to max_energy, where it is constantly max_dn
+        - maximal possible index pf refraction is 10^-3, and that's known quite well
+        - energy of the threshold is somewhere below 150nJ, but it's not well known
+        - the max energy can be 100 or 1000 times bigger than the threshold energy"""
 
-    def __init__(self, max_dn, min_energy, max_energy, **kwargs):
+    def __init__(self,
+                 min_energy=100 * NANO,
+                 max_energy=10 * MICRO,
+                 max_dn=1e-3,
+                 **kwargs):
         super().__init__(**kwargs)
         self.max_dn = max_dn
         self.min_energy = min_energy
