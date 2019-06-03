@@ -27,12 +27,15 @@ You can also install `Anaconda`, available [here](https://www.anaconda.com).
  - material class 
     - how the deposited energy depends on current energy deposited?
     the response is sigmoidal, but how the response translates to deposited energy
-    - propagation of wave:
-    seems best to use now Gilles matrix theory (still).
-     Wee need spectrum at each z, might use different discretization for simulation 
-     and for plotting. The equation we want to calculate is:
-     $$\sum_{k} |A_+(k, z) + A_-(k, z)|^2 dk $$
  - describe models
+ - add layered material
+ - replace old functionality:
+    - chirps
+    - equivalent patterns
+    - random phase
+    - printing without interference 
+ - test different material models
+ - add example reflections
      
      
 ## License

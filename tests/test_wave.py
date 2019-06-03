@@ -24,9 +24,15 @@ class TestSpectrum(unittest.TestCase):
         self.assertEqual(gaussian, not_chirped)
         self.assertNotEqual(gaussian, chirped)
 
+    def test_power(self):
+        gaussian = w.GaussianSpectrum()
+        gaussian_power2 = w.GaussianSpectrum(energy=2)
+        self.assertAlmostEqual(w.SINGLE_PULSE_ENERGY, gaussian.total_energy())
+        self.assertAlmostEqual(2, gaussian_power2.total_energy())
 
-class TestMaterial(unittest.TestCase):
-    z = np.linspace(-5*w.MICRO, 5*w.MICRO)
+
+class TestConstantMaterial(unittest.TestCase):
+    z = np.linspace(-5 * w.MICRO, 5 * w.MICRO)
 
     def test_creation(self):
         dl = w.ConstantMaterial(z=self.z)
@@ -42,13 +48,19 @@ class TestMaterial(unittest.TestCase):
         np.testing.assert_almost_equal(analytic, computed)
         self.assertTrue(np.allclose(analytic, computed))
 
+    def test_propagate(self):
+        s = w.GaussianSpectrum()
+        dl = w.ConstantMaterial(z=self.z)
+        propagation_data = dl._propagate(s)
+        self.assertEqual(propagation_data.shape, (len(s.s), len(self.z)))
+
 
 class TestSigmoid(unittest.TestCase):
-
     def test_percentile(self):
         perc = 0.01
         self.assertTrue(w.sigmoid(0, 0, 1, percentile=perc) < perc)
         self.assertTrue(w.sigmoid(1, 0, 1, percentile=perc) > 1 - perc)
+
 
 if __name__ == '__main__':
     unittest.main()

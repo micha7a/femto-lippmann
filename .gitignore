@@ -3,7 +3,8 @@
 *.html
 
 # Simulation results
-simulations/results
+old_results
+experiments/results
 
 # System files 
 .directory
