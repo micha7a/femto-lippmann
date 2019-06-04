@@ -1,36 +1,40 @@
 # -*- coding: utf-8 -*-
 """
-1D matrix theory porting from Gilles Lippmann.
 
-TODO (michalina) describe matrix theory
+This file implements basic matrix theory that can be used by different classes.
+Each propagation can be described in two representations:
+ - a forward in space model, we call it a forward model (incoming and outgoing wave known on the one end of the
+ boundary)
+ - a forward in time model, we call it a backward model (incoming waves known on both ends of the boundary)
 
-We need:
- - a forward in space model, call it forward model (incoming and outgoing wave known on the one end of the boundary)
- - a forward in time model, call it backward model (incoming waves known on both ends of the boundary)
- - does it make sense to consider a mixed option?
- - propagation + boundary matrix, that can be used just as:
-    - boundary
-    - propagation
-
-We could consider writing it in the tensor form hoping it would be faster, but who knows...
+ In order to switch between the models use `swap_waves`
 """
 
 from wave import *
 
 
 def swap_waves(matrix: np.ndarray) -> np.ndarray:
+    """ Change basis between forward and backward representations.
+
+    Args:
+        matrix: a 2x2 matrix in any representation (forward or backward)
+
+    Returns:
+        a 2x2 matrix in the different representation than matrix
+
+    """
     result = np.empty_like(matrix, dtype=complex)
     result[0, 0] = matrix[0, 0] * matrix[1, 1] - matrix[0, 1] * matrix[1, 0]
     result[0, 1] = matrix[0, 1]
-    result[1, 0] = - matrix[1, 0]
+    result[1, 0] = -matrix[1, 0]
     result[1, 1] = 1.0
-    return result/matrix[1, 1]
+    return result / matrix[1, 1]
 
 
 def propagation_matrix(n: complex, dz: float, k: float, backward: bool = False) -> np.ndarray:
     matrix = np.zeros((2, 2), dtype=complex)
-    phi = n*dz*k
-    matrix[0, 0] = np.exp(1j*phi)
+    phi = n * dz * k
+    matrix[0, 0] = np.exp(1j * phi)
     if not backward:
         matrix[1, 1] = np.exp(-1j * phi)  # TODO should this be conjugate or not?
     else:
@@ -38,7 +42,7 @@ def propagation_matrix(n: complex, dz: float, k: float, backward: bool = False) 
     return matrix
 
 
-def boundary_matrix(n1:complex, n2: complex, backward: bool = False) -> np.ndarray:
+def boundary_matrix(n1: complex, n2: complex, backward: bool = False) -> np.ndarray:
     matrix = np.zeros((2, 2), dtype=complex)
     if not backward:
         matrix[0, 0] = n1 + n2
