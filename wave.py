@@ -52,7 +52,7 @@ class Spectrum(object):
         self.name = name
 
     def __mul__(self, other) -> Spectrum:
-        if isinstance(other, (complex, float, int)):
+        if isinstance(other, (complex, float, int, np.ndarray)):
             return Spectrum(other * self.s)
         if isinstance(other, Spectrum):
             return Spectrum(self.s * other.s.conj())
@@ -187,13 +187,19 @@ class Material(object):
     """
 
     def __init__(self, z: np.ndarray, n0: Union[complex, np.ndarray] = 1, name: str = "", **kwargs):
-        assert np.imag(n0) >= 0
+        if isinstance(n0, np.ndarray):
+            assert (np.imag(n0) >= 0).all()
+        else:
+            assert np.imag(n0) >= 0
         self.z = z
         self.n0 = n0
         self.deposited_energy = np.zeros(len(z))
         self.length = z[-1] - z[0]
         self.recent_energy = np.zeros(len(z))
         self.name = name
+        self.matrix = np.zeros((2, 2, len(Spectrum.k)), dtype=complex)
+        for idx, k in enumerate(Spectrum.k):
+            self.matrix[:, :, idx] = self.material_matrix(k, backward=True)
 
     def index_of_refraction(self) -> np.ndarray:
         """Function calculating index of refraction between each two boundaries
@@ -228,7 +234,11 @@ class Material(object):
         ax.set_title("index of refraction")
         ax.legend()
 
-    # TODO(michalina) add reflection and transmission calculated from the matrix
+    def reflect(self, spectrum: Spectrum) -> Spectrum:
+        return spectrum * self.matrix[0, 1, :]
+
+    def transmit(self, spectrum: Spectrum) -> Spectrum:
+        return spectrum * self.matrix[0, 0, :]
 
 
 class ConstantMaterial(Material):
@@ -279,8 +289,7 @@ class EmptySpace(ConstantMaterial):
     that cannot be modified. Used mostly for testing"""
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.n0 = 1
+        super().__init__(n0=1.0, **kwargs)
 
     def energy_distribution(self, forward_wave: Spectrum, backward_wave: Spectrum) -> np.ndarray:
         """Different implementation of interference based on correlation rather
@@ -303,11 +312,11 @@ class SimpleDielectric(Material):
         - energy of the threshold is somewhere below 150nJ, but it's not well known
         - the max energy can be 100 or 1000 times bigger than the threshold energy"""
 
-    def __init__(self, min_energy=100 * NANO, max_energy=10 * MICRO, max_dn=1e-3, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, min_energy=100 * NANO, max_energy=1 * MICRO, max_dn=1e-3, **kwargs):
         self.max_dn = max_dn
         self.min_energy = min_energy
         self.max_energy = max_energy
+        super().__init__(**kwargs)
 
     def index_of_refraction(self):
         """Hard threshold"""
@@ -363,11 +372,30 @@ class SimpleDielectric(Material):
                 energy[idx_z] += np.abs(np.sum(right))**2 * Spectrum.dk()
             previous_backward = copy.deepcopy(next_backward)
             previous_forward = copy.deepcopy(next_forward)
+        energy[-1] = energy[-2]
         return energy
 
 
 class LayeredMaterial(SimpleDielectric):
-    """A placeholder for a class describing a layered material"""
+    """A layered dielectric, a slow implementation"""
+
+    def __init__(self, z, n_layers, layer_width, n0, n1, **kwargs):
+        period = (z[-1] - z[0]) / n_layers
+        if period < layer_width:
+            raise ValueError("Layers can't overlap")
+        n = np.ones_like(z) * n0
+        for idx, pos in enumerate(z):
+            relative_pos = (pos - z[0]) % period
+            if relative_pos > (period - layer_width) / 2:
+                if relative_pos < (period + layer_width) / 2:
+                    n[idx] = n1
+        super().__init__(z=np.array(z), n0=np.array(n), **kwargs)
+        self.left_boundaries = z[0] + (period - layer_width) / 2 + period * np.arange(0, n_layers)
+        self.layer_width = layer_width
+
+    def shade_plot(self, ax, alpha=0.1, **kwargs):
+        for boundary in self.left_boundaries:
+            ax.axvspan(boundary, boundary + self.layer_width, alpha=alpha, **kwargs)
 
 
 class CompositeMaterial(object):
