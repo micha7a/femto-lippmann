@@ -20,10 +20,6 @@ conda install --file requirements.txt
 
 ## TODOs
 
- - switch to using tmm & scipy.stats (?)
- - material class 
-    - how the deposited energy depends on current energy deposited?
-    the response is sigmoidal, but how the response translates to deposited energy
  - describe models
  - replace old functionality:
     - chirps
@@ -31,7 +27,6 @@ conda install --file requirements.txt
     - random phase
     - printing without interference 
  - test different material models
- - improve matrix theory
      
      
 ## License

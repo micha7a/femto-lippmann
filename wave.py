@@ -105,7 +105,6 @@ class Spectrum(object):
         ax.plot(x, np.real(self.s), label="spectrum {}".format(self.name))
         ax.plot(x, self.power_spectrum(), label="power spectrum {}".format(self.name))
         ax.set_xlabel(r"$\lambda$" if wavelength else r"k")
-        ax.legend()
 
     def plot_amplitude(self, z, ax):
         if self.s.size == 0:
@@ -114,7 +113,6 @@ class Spectrum(object):
         ax.plot(z, amplitude, label="amplitude {}".format(self.name))
         ax.plot(z, np.abs(amplitude), label="envelope {}".format(self.name))
         ax.set_xlabel("z")
-        ax.legend()
 
 
 class DeltaSpectrum(Spectrum):
@@ -197,9 +195,7 @@ class Material(object):
         self.length = z[-1] - z[0]
         self.recent_energy = np.zeros(len(z))
         self.name = name
-        self.matrix = np.zeros((2, 2, len(Spectrum.k)), dtype=complex)
-        for idx, k in enumerate(Spectrum.k):
-            self.matrix[:, :, idx] = self.material_matrix(k, backward=True)
+        self.matrix = self.material_matrix(Spectrum.k, backward=True)
 
     def index_of_refraction(self) -> np.ndarray:
         """Function calculating index of refraction between each two boundaries
@@ -224,6 +220,7 @@ class Material(object):
     def record(self, forward_wave: Spectrum, backward_wave: Spectrum):
         self.recent_energy = self.energy_distribution(forward_wave, backward_wave)
         self.deposited_energy += self.energy_response(self.recent_energy)
+        self.matrix = self.material_matrix(forward_wave.k, backward=True)
 
     def plot(self, ax, plot_imaginary=True, alpha=1):
         index = self.index_of_refraction()
@@ -232,7 +229,6 @@ class Material(object):
             ax.step(self.z, np.imag(index), where="post", label="imaginary part {}".format(self.name), alpha=alpha)
         ax.set_xlabel("z")
         ax.set_title("index of refraction")
-        ax.legend()
 
     def reflect(self, spectrum: Spectrum) -> Spectrum:
         return spectrum * self.matrix[0, 1, :]
@@ -331,47 +327,38 @@ class SimpleDielectric(Material):
 
     def material_matrix(self, k, backward=False):
         ns = self.index_of_refraction()
-        matrix = np.eye(2)
+        matrix = np.zeros((2, 2, len(k)), dtype=complex)
+        matrix[0, 0] = 1
+        matrix[1, 1] = 1
         for idx in range(len(self.z) - 1):
-            matrix = mt.propagation_matrix(ns[idx], self.z[idx + 1] - self.z[idx], k) @ matrix
+            propagation = mt.propagation_matrix(ns[idx], self.z[idx + 1] - self.z[idx], k)
+            matrix = np.einsum('ijk,jlk->ilk', propagation, matrix)
             # add boundary:
             # the last element of ns does not correspond to any physical space
             # thus the last boundary is between second to last and last index
             if idx < len(self.z) - 2:
-                matrix = mt.boundary_matrix(ns[idx], ns[idx + 1]) @ matrix  # TODO is this consistent?
+                boundary = mt.boundary_matrix(ns[idx], ns[idx + 1])
+                matrix = np.tensordot(boundary, matrix, axes=(1, 0))
         if backward:
             matrix = mt.swap_waves(matrix)
         return matrix
 
     def energy_distribution(self, forward_wave, backward_wave):
-        left_backward = Spectrum(Spectrum.k)
-        right_forward = Spectrum(Spectrum.k)
         # Calculate the outgoing waves
-        for idx_k, k in enumerate(Spectrum.k):
-            incoming = np.array([forward_wave.s[idx_k], backward_wave.s[idx_k]])[:, None]
-            outgoing = self.material_matrix(k, backward=True) @ incoming
-            outgoing = outgoing.squeeze()
-            right_forward.s[idx_k] = outgoing[0]
-            left_backward.s[idx_k] = outgoing[1]
+        incoming = np.array([forward_wave.s, backward_wave.s])
+        outgoing = np.einsum('ijk,jk->ik', self.matrix, incoming)
         # Calculate the wave at each step, moving forward
         energy = np.zeros_like(self.z)
-        previous_backward = copy.deepcopy(left_backward)
-        previous_forward = copy.deepcopy(forward_wave)
-        next_forward = copy.deepcopy(left_backward)
-        next_backward = copy.deepcopy(left_backward)
+        left = np.array([incoming[0], outgoing[1]])
         ns = self.index_of_refraction()
         for idx_z in range(len(self.z) - 1):
-            for idx_k, k in enumerate(Spectrum.k):
-                left = np.array([previous_forward.s[idx_k], previous_backward.s[idx_k]])[:, None]
-                matrix = mt.propagation_matrix(ns[idx_z], self.z[idx_z + 1] - self.z[idx_z], k)
-                if idx_z > 0:
-                    matrix = matrix @ mt.boundary_matrix(ns[idx_z - 1], ns[idx_z])
-                right = (matrix @ left).squeeze()
-                next_forward.s[idx_k] = right[0]
-                next_backward.s[idx_k] = right[1]
-                energy[idx_z] += np.abs(np.sum(right))**2 * Spectrum.dk()
-            previous_backward = copy.deepcopy(next_backward)
-            previous_forward = copy.deepcopy(next_forward)
+            matrix = mt.propagation_matrix(ns[idx_z], self.z[idx_z + 1] - self.z[idx_z], forward_wave.k)
+            if idx_z > 0:
+                boundary = mt.boundary_matrix(ns[idx_z - 1], ns[idx_z])
+                matrix = np.einsum('ijk,jl->ilk', matrix, boundary)
+            right = np.einsum('ijk,jk->ik', matrix, left)
+            energy[idx_z] = np.sum(np.abs(np.sum(right, axis=0))**2) * Spectrum.dk()
+            left = right
         energy[-1] = energy[-2]
         return energy
 
@@ -383,7 +370,7 @@ class LayeredMaterial(SimpleDielectric):
         period = (z[-1] - z[0]) / n_layers
         if period < layer_width:
             raise ValueError("Layers can't overlap")
-        n = np.ones_like(z) * n0
+        n = np.ones_like(z, dtype=complex) * n0
         for idx, pos in enumerate(z):
             relative_pos = (pos - z[0]) % period
             if relative_pos > (period - layer_width) / 2:

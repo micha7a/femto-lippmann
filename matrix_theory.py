@@ -31,14 +31,25 @@ def swap_waves(matrix: np.ndarray) -> np.ndarray:
     return result / matrix[1, 1]
 
 
-def propagation_matrix(n: complex, dz: float, k: float, backward: bool = False) -> np.ndarray:
+def single_propagation_matrix(n: complex, dz: float, k: float, backward: bool = False) -> np.ndarray:
     matrix = np.zeros((2, 2), dtype=complex)
     phi = n * dz * k
     matrix[0, 0] = np.exp(1j * phi)
     if not backward:
-        matrix[1, 1] = np.exp(-1j * phi)  # TODO should this be conjugate or not?
+        matrix[1, 1] = np.exp(-1j * phi)
     else:
         matrix[1, 1] = np.exp(1j * phi)
+    return matrix
+
+
+def propagation_matrix(n: complex, dz: float, k: np.ndarray, backward: bool = False) -> np.ndarray:
+    matrix = np.zeros((2, 2, len(k)), dtype=complex)
+    phi = n * dz * k
+    matrix[0, 0, :] = np.exp(1j * phi)
+    if not backward:
+        matrix[1, 1, :] = np.exp(-1j * phi)
+    else:
+        matrix[1, 1, :] = np.exp(1j * phi)
     return matrix
 
 
