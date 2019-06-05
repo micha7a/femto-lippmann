@@ -5,9 +5,9 @@ A 1D Wave module for Femto-Lippmann project
 from __future__ import annotations
 
 import numpy as np
-import copy
 from typing import Union
 import matrix_theory as mt
+from matplotlib.ticker import EngFormatter
 
 C = 299792458
 NANO = 1e-9
@@ -17,6 +17,8 @@ GREEN = 500 * NANO
 RED = 740 * NANO
 OMEGA_STEPS = 100
 SINGLE_PULSE_ENERGY = 50 * NANO  # nanoJules
+
+FORMATTER = EngFormatter(places=1, sep="")
 
 
 def sigmoid(x, x_min, x_max, percentile=0.01):
@@ -45,11 +47,10 @@ class Spectrum(object):
     def dk(cls):
         return cls.k[1] - cls.k[0]
 
-    def __init__(self, spectrum_array: np.ndarray = np.empty(0), name="", **kwargs):
+    def __init__(self, spectrum_array: np.ndarray = np.empty(0), **kwargs):
         if spectrum_array.size != 0 and spectrum_array.size != self.k.size:
             raise ValueError("The spectrum_array must be of len(Spectrum.k), default {}".format(OMEGA_STEPS))
         self.s = np.array(spectrum_array, dtype=complex)
-        self.name = name
 
     def __mul__(self, other) -> Spectrum:
         if isinstance(other, (complex, float, int, np.ndarray)):
@@ -98,21 +99,30 @@ class Spectrum(object):
     def wavelength(self):
         return 2 * np.pi / self.k
 
-    def plot(self, ax, wavelength=False):
+    def plot(self, ax, wavelength=False, spectrum_axis=None, **kwargs):
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         x = self.wavelength() if wavelength else self.k
-        ax.plot(x, np.real(self.s), label="spectrum {}".format(self.name))
-        ax.plot(x, self.power_spectrum(), label="power spectrum {}".format(self.name))
-        ax.set_xlabel(r"$\lambda$" if wavelength else r"k")
+        ax.set_xlabel(r"$\lambda$ [m]" if wavelength else r"k [1/m]")
+        ax.xaxis.set_major_formatter(FORMATTER)
+        ax.plot(x, self.power_spectrum(), **kwargs)
+        color = ax.get_lines()[-1].get_color()
+        ax.set_ylabel("power spectrum", color=color)
+        ax.tick_params(axis='y', labelcolor=color)
+        if spectrum_axis is not None:
+            color = ax._get_lines.get_next_color()
+            spectrum_axis.plot(x, np.real(self.s), color=color, **kwargs)
+            spectrum_axis.tick_params(axis='y', labelcolor=color)
+            spectrum_axis.set_ylabel("spectrum", color=color)
 
-    def plot_amplitude(self, z, ax):
+    def plot_amplitude(self, z, ax, label="", **kwargs):
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         amplitude = self.amplitude(z)
-        ax.plot(z, amplitude, label="amplitude {}".format(self.name))
-        ax.plot(z, np.abs(amplitude), label="envelope {}".format(self.name))
-        ax.set_xlabel("z")
+        ax.plot(z, amplitude, label="amplitude {}".format(label), **kwargs)
+        ax.plot(z, np.abs(amplitude), label="envelope {}".format(label), **kwargs)
+        ax.set_xlabel("z[m]")
+        ax.xaxis.set_major_formatter(FORMATTER)
 
 
 class DeltaSpectrum(Spectrum):
@@ -184,7 +194,7 @@ class Material(object):
         length: total length of the material.
     """
 
-    def __init__(self, z: np.ndarray, n0: Union[complex, np.ndarray] = 1, name: str = "", **kwargs):
+    def __init__(self, z: np.ndarray, n0: Union[complex, np.ndarray] = 1, **kwargs):
         if isinstance(n0, np.ndarray):
             assert (np.imag(n0) >= 0).all()
         else:
@@ -194,7 +204,6 @@ class Material(object):
         self.deposited_energy = np.zeros(len(z))
         self.length = z[-1] - z[0]
         self.recent_energy = np.zeros(len(z))
-        self.name = name
         self.matrix = self.material_matrix(Spectrum.k, backward=True)
 
     def index_of_refraction(self) -> np.ndarray:
@@ -222,13 +231,27 @@ class Material(object):
         self.deposited_energy += self.energy_response(self.recent_energy)
         self.matrix = self.material_matrix(forward_wave.k, backward=True)
 
-    def plot(self, ax, plot_imaginary=True, alpha=1):
+    def plot(self, ax, imaginary_axis=None, **kwargs):
         index = self.index_of_refraction()
-        ax.step(self.z, np.real(index), where='post', label="real part {}".format(self.name), alpha=alpha)
-        if plot_imaginary:
-            ax.step(self.z, np.imag(index), where="post", label="imaginary part {}".format(self.name), alpha=alpha)
-        ax.set_xlabel("z")
+        ax.step(self.z, np.real(index), where='post', **kwargs)
+        color = ax.get_lines()[-1].get_color()
+        ax.set_ylabel("real part", color=color)
+        ax.tick_params(axis='y', labelcolor=color)
+        color = ax._get_lines.get_next_color()
+        if imaginary_axis is not None:
+            imaginary_axis.step(self.z, np.imag(index), where="post", color=color, **kwargs)
+            imaginary_axis.set_ylabel("imaginary part", color=color)
+            imaginary_axis.tick_params(axis='y', labelcolor=color)
+        ax.set_xlabel("z [m]")
+        ax.xaxis.set_major_formatter(FORMATTER)
         ax.set_title("index of refraction")
+
+    def plot_recent_energy(self, ax, **kwargs):
+        ax.plot(self.z, self.recent_energy, **kwargs)
+        ax.set_xlabel("z [m]")
+        ax.xaxis.set_major_formatter(FORMATTER)
+        ax.set_title("propagated energy")
+        ax.set_ylabel("intensity")
 
     def reflect(self, spectrum: Spectrum) -> Spectrum:
         return spectrum * self.matrix[0, 1, :]
