@@ -7,7 +7,7 @@ from wave import PlanarWave
 
 class TestMatrixTheory(unittest.TestCase):
     def setUp(self) -> None:
-        PlanarWave.k = np.linspace(2 * np.pi / c.RED, 2 * np.pi / c.VIOLET, c.OMEGA_STEPS)
+        PlanarWave.k = c.DEFAULT_K
 
     def test_boundary_trivial(self):
         n1 = 1

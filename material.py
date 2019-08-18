@@ -71,9 +71,13 @@ class Material(object):
         color = ax.get_lines()[-1].get_color()
         ax.set_ylabel("real part", color=color)
         ax.tick_params(axis='y', labelcolor=color)
-        color = ax._get_lines.get_next_color()
         if imaginary_axis is not None:
-            imaginary_axis.step(self.z, np.imag(index), where="post", color=color, **kwargs)
+            if "color" not in kwargs:
+                color = ax._get_lines.get_next_color()
+                kwargs["color"] = color
+            else:
+                color = kwargs["color"]
+            imaginary_axis.step(self.z, np.imag(index), where="post", **kwargs)
             imaginary_axis.set_ylabel("imaginary part", color=color)
             imaginary_axis.tick_params(axis='y', labelcolor=color)
         ax.set_xlabel("z [m]")
@@ -206,7 +210,7 @@ class SimpleDielectric(Material):
         left = np.array([incoming[0], outgoing[1]])
         ns = self.index_of_refraction()
         for idx_z in range(len(self.z) - 1):
-            matrix = w.PlanarWave.propagation_matrix(ns[idx_z], self.z[idx_z + 1] - self.z[idx_z], forward_wave.k)
+            matrix = w.PlanarWave.propagation_matrix(ns[idx_z], self.z[idx_z + 1] - self.z[idx_z])
             if idx_z > 0:
                 boundary = w.PlanarWave.boundary_matrix(ns[idx_z - 1], ns[idx_z])
                 matrix = np.einsum('ijk,jl->ilk', matrix, boundary)

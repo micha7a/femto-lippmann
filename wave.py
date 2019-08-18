@@ -113,8 +113,13 @@ class PlanarWave(object):
         ax.set_ylabel("power spectrum", color=color)
         ax.tick_params(axis='y', labelcolor=color)
         if spectrum_axis is not None:
-            color = ax._get_lines.get_next_color()
-            spectrum_axis.plot(x, np.real(self.s), color=color, **kwargs)
+            if "color" not in kwargs:
+                color = ax._get_lines.get_next_color()
+                kwargs["color"] = color
+            else:
+                color = kwargs["color"]
+            spectrum_axis.plot(x, np.real(self.s), **kwargs)
+            spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.tick_params(axis='y', labelcolor=color)
             spectrum_axis.set_ylabel("spectrum", color=color)
 
@@ -122,7 +127,7 @@ class PlanarWave(object):
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         amplitude = self.amplitude(z)
-        ax.plot(z, amplitude, label="amplitude {}".format(label), **kwargs)
+        ax.plot(z, np.real(amplitude), label="amplitude {}".format(label), **kwargs)
         ax.plot(z, np.abs(amplitude), label="envelope {}".format(label), **kwargs)
         ax.set_xlabel("z[m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
@@ -224,12 +229,10 @@ class GaussianPlanarWave(PlanarWave):
         self.set_energy(energy)
 
 
-class ChirpedSpectrum(GaussianPlanarWave):
+class ChirpedPlanarWave(GaussianPlanarWave):
     """A class representing a chirped gaussian spectrum."""
     def __init__(self, skew: float = 0, **kwargs):
         super().__init__(**kwargs)
-        if "wavenumber" in kwargs:
-            print("we have wavenumber")
-            if not kwargs["wavenumber"] and skew != 0:
-                skew = 2 * np.pi / skew
-        self.s = self.s * np.exp(1j * skew * self.k**2)
+        if "wavenumber" in kwargs and not kwargs["wavenumber"] and skew != 0:
+            skew = 2 * np.pi / skew
+        self.s = self.s * np.exp(1j * skew * ((self.k - np.median(self.k))**2))

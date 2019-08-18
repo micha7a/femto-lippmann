@@ -18,14 +18,27 @@ and run:
 conda install --file requirements.txt
 ```
 
+### Contribute
+If you want to contribute to this repository, you should install 'yapf' via:
+
+    pip install yapf
+    
+or 
+    
+    conda install yapf
+    
+and then run:
+
+    ./scripts/setup_repository
+
+in order to set up `yapf` formatter and git hook for removing non important changes form Jupyter Notebooks.
+
 ## TODOs
 
  - describe models
  - replace old functionality:
-    - chirps
     - equivalent patterns
-    - random phase
-    - printing without interference 
+    - adding index of refraction in arbitrary place
  - test different material models
      
      

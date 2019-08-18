@@ -6,6 +6,9 @@ import wave as w
 
 
 class TestWave(unittest.TestCase):
+    def setUp(self) -> None:
+        w.PlanarWave.k = c.DEFAULT_K
+
     def test_creation(self):
         s = w.PlanarWave(spectrum_array=np.zeros(c.OMEGA_STEPS))
         self.assertEqual(np.zeros(c.OMEGA_STEPS).tolist(), s.s.tolist())
