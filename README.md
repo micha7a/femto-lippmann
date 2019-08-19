@@ -4,7 +4,7 @@ Software for a joined Galatea & LCAV project on digitising Lippmann photography.
 ---
 ## Getting stated
 
-### Dependencies
+### Dependencies & Installation
 
 The software is written in `Python 3`, with the specific list of dependencies in 
 `requirements.txt`. To install them, run:
@@ -18,8 +18,35 @@ and run:
 conda install --file requirements.txt
 ```
 
+### Documentation
+
+The functions and objects are documented in the files than define them. If you
+want to see the documentation from Python console, you can run:
+
+    import wave
+    help(wave)
+    help(weve.PlanarWave)
+    help(wave.PlanarWave.plot)
+    
+to see documentation on the whole module, object and function, respectively.
+
+### Examples
+Many examples how to use this code are in the `Examples.ipnb`. In order to view 
+the notebook, first follow installation instructions above, and then run 
+`Jupyter Notebook`. If you used Anaconda on Windows, you can run Jupyter 
+Notebook from start menu, but you also always can run it from the terminal. Go 
+to directory where this project is located, and run:
+
+    jupyter notebook
+
+It will open your browser (or a new tab in your browser), where you will be 
+able to se the list of the files in this project. You can then click on any 
+`Examples.ipnb` file to see the interactive examples. In order to run code in a 
+cell of Jupyter Notebook, press `shift + enter` or pick "run cell" from the 
+menu on top. 
+
 ### Contribute
-If you want to contribute to this repository, you should install 'yapf' via:
+If you want to contribute to this repository, you should install `yapf` via:
 
     pip install yapf
     
@@ -31,7 +58,11 @@ and then run:
 
     ./scripts/setup_repository
 
-in order to set up `yapf` formatter and git hook for removing non important changes form Jupyter Notebooks.
+in order to set up `yapf` formatter and git hook for removing non important 
+changes form Jupyter Notebooks.
+
+Before pushing to the project, you should also run unit tests in `tests` 
+directory, and adding more tests is always welcome ;)
 
 ## TODOs
 

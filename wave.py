@@ -45,7 +45,7 @@ class PlanarWave(object):
         s: values of spectrum
         k: static, (absolute) wavenumbers for which the spectra are defined
     """
-    k = np.linspace(2 * np.pi / c.RED, 2 * np.pi / c.VIOLET, c.OMEGA_STEPS)
+    k = c.DEFAULT_K
 
     @classmethod
     def dk(cls):
