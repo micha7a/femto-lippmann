@@ -24,8 +24,8 @@ class TestWave(unittest.TestCase):
 
     def test_chirped(self):
         gaussian = w.GaussianPlanarWave()
-        not_chirped = w.ChirpedSpectrum()
-        chirped = w.ChirpedSpectrum(skew=0.5)
+        not_chirped = w.ChirpedPlanarWave()
+        chirped = w.ChirpedPlanarWave(skew=0.5)
         self.assertEqual(gaussian, not_chirped)
         self.assertNotEqual(gaussian, chirped)
 

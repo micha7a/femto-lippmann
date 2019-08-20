@@ -41,68 +41,96 @@ class PlanarWave(object):
     positive means that the wave is described in it's local frame, and that
     there can't be constant (frequency 0) component.
 
-    Attributes:
+    Args:
         s: values of spectrum
-        k: static, (absolute) wavenumbers for which the spectra are defined
+        k: static, (absolute) wavenumbers for which the spectra are defined,
+        it's static, because we want to add crate the interference between
+        different waves. Wavenumbers are assumed to be uniformly spaced.
     """
     k = c.DEFAULT_K
 
     @classmethod
     def dk(cls):
+        """Get the difference between two consecutive wavenumbers"""
         return cls.k[1] - cls.k[0]
 
     def __init__(self, spectrum_array: np.ndarray = np.empty(0), **kwargs):
+        """Create wave from complex numpy array"""
         if spectrum_array.size != 0 and spectrum_array.size != self.k.size:
             raise ValueError("The spectrum_array must be of len(Spectrum.k), default {}".format(c.OMEGA_STEPS))
         self.s = np.array(spectrum_array, dtype=complex)
 
     def __mul__(self, other) -> PlanarWave:
+        """Multiply spectrum by a a scalar or filter, or convolve two
+        waves in space (which is multiplying in wavenumbers)."""
         if isinstance(other, (complex, float, int, np.ndarray)):
             return PlanarWave(other * self.s)
         if isinstance(other, PlanarWave):
             return PlanarWave(self.s * other.s.conj())
         raise NotImplementedError
 
+    # Right multiplication is the same as left
     __rmul__ = __mul__
 
     def __add__(self, other) -> PlanarWave:
-        if not np.allclose(self.k, other.k):
-            raise NotImplementedError
+        """Add two waves traveling in the same direction"""
         return PlanarWave(spectrum_array=self.s + other.s)
 
     def __eq__(self, other):
-        """Overrides the default implementation using almost equal"""
+        """Compare two waves. Waves are considered equal if their spectra
+        are close up to 1e-7."""
         if isinstance(other, PlanarWave):
             return np.allclose(self.k, other.k) and np.allclose(self.s, other.s)
         return False
 
     def amplitude(self, z, time=0) -> np.array:
+        """Calculate wave amplitude at positions z and at given time"""
         transform = np.exp(1j * (z - c.C * time)[:, None] @ self.k[None, :])
         return self.dk() * transform @ self.s[:, None]
 
     def power_spectrum(self):
+        """Calculate power at each wavenumber"""
         return np.abs(self.s)**2
 
     def total_energy(self):
+        """Integrate power over the whole spectrum"""
         return np.sum(self.power_spectrum()) * self.dk()
 
     def set_energy(self, energy):
+        """Normalize wave to have a given total energy"""
         self.s = self.s / np.sqrt(self.total_energy()) * np.sqrt(energy)
 
     def from_amplitude(self, amplitude, z, time=0):
+        """Set spectrum from given amplitude at depths z and given time"""
         transform = np.exp(1j * self.k[:, None] @ (-z - c.C * time)[None, :])
         self.s = (z[1] - z[0]) * transform @ amplitude[:, None]
 
     def delay(self, time):
+        """Shift pulse in time by a scalar"""
         self.s = self.s * np.exp(1j * c.C * time * self.k)
 
     def shift(self, z):
+        """Shift pulse in space by a scalar"""
         self.s = self.s * np.exp(1j * z * self.k)
 
     def wavelength(self):
+        """Get wavelength form wavenumber"""
         return 2 * np.pi / self.k
 
-    def plot(self, ax, wavelength=False, spectrum_axis=None, **kwargs):
+    def plot(self, ax=None, wavelength=False, spectrum_axis=None, label="", **kwargs):
+        """Plot power spectrum of a wave.
+
+        Args:
+            ax: matplotlib axis, created by plt.figure() or plt.subplots(), used
+            to arrange plots.
+            wavelength: if true, plot wavelength on x axis, otherwise leave
+            wavenumber on x axis
+            spectrum_axis: if provided, create new plot showing spectrum (not
+            power spectrum). This axis can be the same as ax.
+            label: label of the plot used in the legend
+            **kwargs: all other arguments than can be passed to matplotlib's
+            plot function
+            """
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         x = self.wavelength() if wavelength else self.k
@@ -110,7 +138,7 @@ class PlanarWave(object):
         ax.xaxis.set_major_formatter(c.FORMATTER)
         ax.plot(x, self.power_spectrum(), **kwargs)
         color = ax.get_lines()[-1].get_color()
-        ax.set_ylabel("power spectrum", color=color)
+        ax.set_ylabel("power spectrum {}".format(label), color=color)
         ax.tick_params(axis='y', labelcolor=color)
         if spectrum_axis is not None:
             if "color" not in kwargs:
@@ -121,9 +149,20 @@ class PlanarWave(object):
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.tick_params(axis='y', labelcolor=color)
-            spectrum_axis.set_ylabel("spectrum", color=color)
+            spectrum_axis.set_ylabel("spectrum {}".format(label), color=color)
 
     def plot_amplitude(self, z, ax, label="", **kwargs):
+        """
+        Plot wave amplitude at depths z
+
+        Args:
+            z: depths at which to plot amplitude
+            ax: matplotlib axis, used to arrange plots
+            label: label of the plot used in the legend
+            **kwargs: : all other arguments than can be passed to matplotlib's
+            plot function
+
+        """
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         amplitude = self.amplitude(z)
@@ -134,7 +173,7 @@ class PlanarWave(object):
 
     @staticmethod
     def swap_waves(matrix: np.ndarray) -> np.ndarray:
-        """ Change basis between forward and backward representations.
+        """ Change basis between forward and backward representations of propagation matrices.
 
         Args:
             matrix: a 2x2 matrix in any representation (forward or backward)
@@ -151,9 +190,27 @@ class PlanarWave(object):
         return result / matrix[1, 1]
 
     @classmethod
-    def single_propagation_matrix(cls: PlanarWave, n: complex, dz: float, backward: bool = False) -> np.ndarray:
+    def identity_matrix(cls):
+        matrix = np.zeros((2, 2, len(cls.k)), dtype=complex)
+        matrix[0, 0] = 1
+        matrix[1, 1] = 1
+        return matrix
+
+    @classmethod
+    def single_propagation_matrix(cls: PlanarWave, k: float, n: complex, dz: float,
+                                  backward: bool = False) -> np.ndarray:
+        """Create a propagation matrix for a single wavenumber k
+
+        Args:
+            k: wavenumber for which the matrix is created
+            n: index of refraction of the layer
+            dz: depth of the layer
+            backward: if True use backward model (see the module documentation)
+
+        Returns:
+            3D tensor of propagation matrices for all wavenumbers if dimensions (2, 2, # wavenumbers)"""
         matrix = np.zeros((2, 2), dtype=complex)
-        phi = n * dz * cls.k
+        phi = n * dz * k
         matrix[0, 0] = np.exp(1j * phi)
         if not backward:
             matrix[1, 1] = np.exp(-1j * phi)
@@ -163,6 +220,17 @@ class PlanarWave(object):
 
     @classmethod
     def propagation_matrix(cls: PlanarWave, n: complex, dz: float, backward: bool = False) -> np.ndarray:
+        """
+        Create 3D tensor of propagation matrices for all wavenumbers
+
+        Args:
+            n: index of refraction of the layer
+            dz: depth of the layer
+            backward: if True use backward model (see the module documentation)
+
+        Returns:
+            3D tensor of propagation matrices for all wavenumbers if dimensions (2, 2, # wavenumbers)
+        """
         matrix = np.zeros((2, 2, len(cls.k)), dtype=complex)
         phi = n * dz * cls.k
         matrix[0, 0, :] = np.exp(1j * phi)
@@ -174,6 +242,18 @@ class PlanarWave(object):
 
     @staticmethod
     def boundary_matrix(n1: complex, n2: complex, backward: bool = False) -> np.ndarray:
+        """
+        Create a matrix of reflection on the boundary (wavenumber independent)
+
+        Args:
+            n1: index of refraction of the first layer
+            n2: index of refraction of the second layer
+            backward: if True use backward model (see the module documentation)
+
+        Returns:
+             matrix of reflection on the boundary, of dimensions (2, 2)
+        """
+
         matrix = np.zeros((2, 2), dtype=complex)
         if not backward:
             matrix[0, 0] = n1 + n2

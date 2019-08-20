@@ -66,11 +66,10 @@ directory, and adding more tests is always welcome ;)
 
 ## TODOs
 
- - describe models
  - replace old functionality:
     - equivalent patterns
     - adding index of refraction in arbitrary place
- - test different material models
+ - make wave theory 3D
      
      
 ## License
