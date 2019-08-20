@@ -4,7 +4,7 @@
 
 # Simulation results
 old_results
-experiments/results
+*.pdf
 
 # System files 
 .directory

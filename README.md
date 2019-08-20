@@ -69,6 +69,10 @@ directory, and adding more tests is always welcome ;)
  - replace old functionality:
     - equivalent patterns
     - adding index of refraction in arbitrary place
+    - add saturation lines to plots
+    - double pulse example
+    - make some parts of material non modifiable (or make the composite 
+    material more sophisticated)
  - make wave theory 3D
      
      

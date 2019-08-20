@@ -137,15 +137,22 @@ class PlanarWave(object):
         ax.set_xlabel(r"$\lambda$ [m]" if wavelength else r"k [1/m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
         ax.plot(x, self.power_spectrum(), **kwargs)
-        color = ax.get_lines()[-1].get_color()
+        # If the color is given to the whole figure, we don't want to have colored axis
+        if "color" in kwargs:
+            color = "k"
+        else:
+            color = ax.get_lines()[-1].get_color()
         ax.set_ylabel("power spectrum {}".format(label), color=color)
         ax.tick_params(axis='y', labelcolor=color)
         if spectrum_axis is not None:
-            if "color" not in kwargs:
+            # If the color is given to the whole figure, we don't want to have colored axis
+            if "color" in kwargs:
+                color = "k"
+            else:
                 color = ax._get_lines.get_next_color()
                 kwargs["color"] = color
-            else:
-                color = kwargs["color"]
+            spectrum_axis.set_xlabel(r"$\lambda$ [m]" if wavelength else r"k [1/m]")
+            spectrum_axis.set_major_formatter(c.FORMATTER)
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.tick_params(axis='y', labelcolor=color)

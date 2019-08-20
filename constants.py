@@ -15,7 +15,7 @@ MICRO = 1e-6
 VIOLET = 380 * NANO  # wavelength of violet light
 GREEN = 500 * NANO  # wavelength of green light
 RED = 740 * NANO  # wavelength of red light
-OMEGA_STEPS = 1000  # default frequency/wavenumber discretization
+OMEGA_STEPS = 10000  # default frequency/wavenumber discretization
 SINGLE_PULSE_ENERGY = 50 * NANO  # nanoJules
 DEFAULT_K = np.linspace(  # default wavenumber vector
     2 * np.pi / (1.0 * MICRO), 2 * np.pi / (300.0 * NANO), OMEGA_STEPS)

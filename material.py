@@ -120,7 +120,7 @@ class Material(object):
         """
         index = self.index_of_refraction()
         ax.step(self.z, np.real(index), where='post', **kwargs)
-        color = ax.get_lines()[-1].get_color()
+        color = "k" if "color" in kwargs else ax.get_lines()[-1].get_color()
         ax.set_ylabel("real part", color=color)
         ax.tick_params(axis='y', labelcolor=color)
         if imaginary_axis is not None:
@@ -128,7 +128,7 @@ class Material(object):
                 color = ax._get_lines.get_next_color()
                 kwargs["color"] = color
             else:
-                color = kwargs["color"]
+                color = "k"
             imaginary_axis.step(self.z, np.imag(index), where="post", **kwargs)
             imaginary_axis.set_ylabel("imaginary part", color=color)
             imaginary_axis.tick_params(axis='y', labelcolor=color)
@@ -352,6 +352,6 @@ class CompositeMaterial(SimpleDielectric):
         super().__init__(z=z, n0=n0, matrix=matrix, **kwargs)
 
     def shade_plot(self, ax, alpha=0.1, **kwargs):
-        colors = cycler('color', plt.get_cmap('viridis')(np.linspace(0, 1, len(self.boundaries))))
+        colors = cycler('color', plt.get_cmap('viridis')(np.linspace(0, 1, len(self.boundaries) - 1)))
         for left, right, color in zip(self.boundaries[:-1], self.boundaries[1:], colors.by_key()['color']):
             ax.axvspan(left, right, alpha=alpha, color=color, **kwargs)
