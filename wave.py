@@ -152,7 +152,7 @@ class PlanarWave(object):
                 color = ax._get_lines.get_next_color()
                 kwargs["color"] = color
             spectrum_axis.set_xlabel(r"$\lambda$ [m]" if wavelength else r"k [1/m]")
-            spectrum_axis.set_major_formatter(c.FORMATTER)
+            spectrum_axis.xaxis.set_major_formatter(c.FORMATTER)
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.tick_params(axis='y', labelcolor=color)
