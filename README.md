@@ -71,10 +71,11 @@ directory, and adding more tests is always welcome ;)
     - adding index of refraction in arbitrary place
     - add saturation lines to plots
     - double pulse example
-    - make some parts of material non modifiable (or make the composite 
-    material more sophisticated)
+ - make some parts of material non modifiable (or make the composite 
+ material more sophisticated)
+ - add a (white) wave
  - make wave theory 3D
-     
+ - plot colors
      
 ## License
 

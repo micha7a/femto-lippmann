@@ -55,7 +55,8 @@ class Material(object):
         self.matrix = self.material_matrix(w.PlanarWave, backward=True)
 
     def index_of_refraction(self) -> np.ndarray:
-        """Function calculating index of refraction between each two boundaries
+        """Function calculating index of refraction between each two boundaries,
+        based on the basic material properties and deposited energy
 
         Returns:
             np.array of length(self.boundary_z) of complex values of index of
@@ -67,7 +68,8 @@ class Material(object):
 
     def energy_response(self, energy: np.ndarray) -> np.ndarray:
         """
-        Response to the material to a given energy. Can describe things like
+        Response to the material to a given energy. Models energy absorbed by
+        the material due to material modification. Can describe things like
         modification threshold and activation.
 
         Args:
@@ -94,7 +96,7 @@ class Material(object):
 
     def energy_distribution(self, forward_wave: w.PlanarWave, backward_wave: w.PlanarWave) -> np.ndarray:
         """
-        Calculate energy distribution of two interfering pulses throughout the material
+        Calculate energy distribution of two interfering pulses propagating through the material.
         """
         raise NotImplementedError
 
@@ -170,9 +172,11 @@ class ConstantMaterial(Material):
             raise ValueError("Fixed dielectric must have constant index n0")
 
     def index_of_refraction(self):
+        """Constant index of refraction."""
         return self.n0 * np.ones_like(self.z)
 
     def energy_response(self, energy):
+        """Constant material does not react to light"""
         return np.zeros_like(energy)
 
     def energy_distribution(self, forward_wave, backward_wave):
@@ -236,14 +240,20 @@ class SimpleDielectric(Material):
         super().__init__(**kwargs)
 
     def index_of_refraction(self):
-        """Hard threshold"""
+        """Index of refraction depending on the deposited energy.
+
+        Index of refraction is linear with deposited energy up to max_energy,
+        when it's constant and equal to max_dn."""
         index = self.n0 + self.max_dn * np.clip(self.deposited_energy / self.max_energy, a_max=1, a_min=None)
         # fill dummy index of refraction
         index[-1] = index[-2]
         return index
 
     def energy_response(self, energy: np.ndarray):
-        """Hard threshold"""
+        """Energy deposited from incoming energy.
+
+        The energy response is linear above min_energy threshold, and zero below
+        this threshold."""
         return np.clip(energy - self.min_energy, a_min=0, a_max=None)
 
     def material_matrix(self, wave: w.PlanarWave, backward=False):
