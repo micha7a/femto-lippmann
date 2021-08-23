@@ -5,18 +5,6 @@ A 1D Wave module for Femto-Lippmann project.
 Currently represents only a planar wave, with arbitrary spectrum, including
 specific examples of single frequency, gaussian and gaussian chirped spectrum.
 
-This module is designed to be expanded with different wave models, as long as
-their propagation can be described via matrix theory. Thus, the Planar Wave
-also describes its propagation through the empty space and its refraction at
-the boundary via matrix theory.
-
-Each propagation can be described in two representations:
- - a forward in space model, we call it a forward model (incoming and outgoing
- wave known on the one end of the boundary)
- - a forward in time model, we call it a backward model (incoming waves known
- on both ends of the boundary)
-
- In order to switch between the propagation models use `swap_waves`
 """
 from __future__ import annotations
 
@@ -178,107 +166,17 @@ class PlanarWave(object):
         ax.set_xlabel("z[m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
 
-    @staticmethod
-    def swap_waves(matrix: np.ndarray) -> np.ndarray:
-        """ Change basis between forward and backward representations of propagation matrices.
 
-        Args:
-            matrix: a 2x2 matrix in any representation (forward or backward)
-
-        Returns:
-            a 2x2 matrix in the different representation than matrix
-
-        """
-        result = np.empty_like(matrix, dtype=complex)
-        result[0, 0] = matrix[0, 0] * matrix[1, 1] - matrix[0, 1] * matrix[1, 0]
-        result[0, 1] = matrix[0, 1]
-        result[1, 0] = -matrix[1, 0]
-        result[1, 1] = 1.0
-        return result / matrix[1, 1]
-
-    @classmethod
-    def identity_matrix(cls):
-        matrix = np.zeros((2, 2, len(cls.k)), dtype=complex)
-        matrix[0, 0] = 1
-        matrix[1, 1] = 1
-        return matrix
-
-    @classmethod
-    def single_propagation_matrix(cls: PlanarWave, k: float, n: complex, dz: float,
-                                  backward: bool = False) -> np.ndarray:
-        """Create a propagation matrix for a single wavenumber k
-
-        Args:
-            k: wavenumber for which the matrix is created
-            n: index of refraction of the layer
-            dz: depth of the layer
-            backward: if True use backward model (see the module documentation)
-
-        Returns:
-            3D tensor of propagation matrices for all wavenumbers if dimensions (2, 2, # wavenumbers)"""
-        matrix = np.zeros((2, 2), dtype=complex)
-        phi = n * dz * k
-        matrix[0, 0] = np.exp(1j * phi)
-        if not backward:
-            matrix[1, 1] = np.exp(-1j * phi)
-        else:
-            matrix[1, 1] = np.exp(1j * phi)
-        return matrix
-
-    @classmethod
-    def propagation_matrix(cls: PlanarWave, n: complex, dz: float, backward: bool = False) -> np.ndarray:
-        """
-        Create 3D tensor of propagation matrices for all wavenumbers
-
-        Args:
-            n: index of refraction of the layer
-            dz: depth of the layer
-            backward: if True use backward model (see the module documentation)
-
-        Returns:
-            3D tensor of propagation matrices for all wavenumbers if dimensions (2, 2, # wavenumbers)
-        """
-        matrix = np.zeros((2, 2, len(cls.k)), dtype=complex)
-        phi = n * dz * cls.k
-        matrix[0, 0, :] = np.exp(1j * phi)
-        if not backward:
-            matrix[1, 1, :] = np.exp(-1j * phi)
-        else:
-            matrix[1, 1, :] = np.exp(1j * phi)
-        return matrix
-
-    @staticmethod
-    def boundary_matrix(n1: complex, n2: complex, backward: bool = False) -> np.ndarray:
-        """
-        Create a matrix of reflection on the boundary (wavenumber independent)
-
-        Args:
-            n1: index of refraction of the first layer
-            n2: index of refraction of the second layer
-            backward: if True use backward model (see the module documentation)
-
-        Returns:
-             matrix of reflection on the boundary, of dimensions (2, 2)
-        """
-
-        matrix = np.zeros((2, 2), dtype=complex)
-        if not backward:
-            matrix[0, 0] = n1 + n2
-            matrix[0, 1] = n2 - n1
-            matrix[1, 0] = n2 - n1
-            matrix[1, 1] = n1 + n2
-            matrix = matrix / (2 * n2)
-        else:
-            matrix[0, 0] = 2 * n1
-            matrix[0, 1] = n2 - n1
-            matrix[1, 0] = n1 - n2
-            matrix[1, 1] = 2 * n2
-            matrix = matrix / (n1 + n2)
-        return matrix
+class WhitePlanarWave(PlanarWave):
+    """A class representing flat spectrum wave"""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.s = np.ones_like(self.k)
 
 
 class DeltaPlanarWave(PlanarWave):
-    """A class representing a single frequency wave."""
+    """A class representing a single frequency wave.
+    #TODO could this be optimised? """
     def __init__(self,
                  energy: float = c.SINGLE_PULSE_ENERGY,
                  wavelength: float = None,
@@ -288,7 +186,7 @@ class DeltaPlanarWave(PlanarWave):
         self.s = np.zeros_like(self.k)
         if wavenumber is None:
             if wavelength is None:
-                raise ValueError("One of wavelength, wavenumber hast o be provided")
+                raise ValueError("One of wavelength, wavenumber has to be provided")
             wavenumber = 2 * np.pi / wavelength
         idx = int((wavenumber - self.k[0]) / self.dk())
         if idx > len(self.k) or idx < 0:

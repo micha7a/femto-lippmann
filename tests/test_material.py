@@ -4,6 +4,7 @@ import unittest
 import constants as c
 import material as m
 import wave as w
+import propagation as p
 
 
 class TestConstantMaterial(unittest.TestCase):
@@ -48,7 +49,25 @@ class TestDielectric(unittest.TestCase):
 
     def test_material_matrix(self):
         s = w.GaussianPlanarWave()
-        np.testing.assert_almost_equal(self.materials[0].material_matrix(s), self.materials[1].material_matrix(s))
+        np.testing.assert_almost_equal(self.materials[0].material_matrix(), self.materials[1].material_matrix())
+
+    def test_propagation(self):
+        air = m.EmptySpace(z=self.z, name="analytic")
+        dielectric = m.SimpleDielectric(z=self.z, n0=1, name="transfer matrices")
+        s = w.GaussianPlanarWave(mean=c.GREEN, std=(5 * c.MICRO))
+        dielectric.record(s, s)
+        air.record(s, s)
+        np.testing.assert_array_almost_equal(air.recent_energy, dielectric.recent_energy, decimal=10)
+
+    def test_single_layer(self):
+        idx_z = 1
+        dielectric = m.SimpleDielectric(z=self.z, n0=1, name="transfer matrices")
+        dielectric._ns = dielectric.index_of_refraction()
+        matrix = dielectric.single_layer_matrix(idx_z)
+        matrix2 = p.propagation_matrix(dielectric._ns[idx_z - 1], dielectric.z[idx_z] - dielectric.z[idx_z - 1])
+        boundary = p.boundary_matrix(dielectric._ns[idx_z - 1], dielectric._ns[idx_z])
+        matrix2 = np.einsum('ijk,jl->ilk', matrix2, boundary)
+        np.testing.assert_array_almost_equal(matrix, matrix2)
 
 
 class TestComposite(unittest.TestCase):
