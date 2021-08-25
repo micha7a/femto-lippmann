@@ -50,14 +50,15 @@ class TestDielectric(unittest.TestCase):
 
     def test_propagation(self):
         s = w.GaussianPlanarWave(mean=c.GREEN, std=(5 * c.MICRO))
-        for material in self.materials:
-            material.record(s, s)
-        np.testing.assert_array_almost_equal(self.materials[0].recent_energy,
-                                             self.materials[1].recent_energy,
-                                             decimal=10)
-        np.testing.assert_array_almost_equal(self.materials[0].recent_energy,
-                                             self.materials[2].recent_energy,
-                                             decimal=10)
+        for dec in [10, 6]:
+            for material in self.materials:
+                material.record(s, s)
+            np.testing.assert_array_almost_equal(self.materials[0].recent_energy,
+                                                 self.materials[1].recent_energy,
+                                                 decimal=dec)
+            np.testing.assert_array_almost_equal(self.materials[0].recent_energy,
+                                                 self.materials[2].recent_energy,
+                                                 decimal=dec)
 
     def test_single_layer(self):
         idx_z = 1

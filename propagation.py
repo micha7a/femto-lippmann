@@ -23,7 +23,7 @@ import numpy as np
 import wave as w
 
 
-def swap_waves(matrix: np.ndarray) -> np.ndarray:
+def change_basis(matrix: np.ndarray) -> np.ndarray:
     """ Change basis between forward and backward representations of propagation matrices.
 
     Args:
@@ -158,3 +158,9 @@ def reflection_matrix(r: float, backward: bool = False) -> np.ndarray:
         matrix[1, 0] = r
         matrix[1, 1] = 1 - r
     return matrix
+
+
+def swap_waves(matrix, forward_wave, backward_wave):
+    incoming = np.array([forward_wave.s, backward_wave.s])
+    outgoing = np.einsum('ijk,jk->ik', matrix, incoming)
+    return forward_wave, w.PlanarWave(outgoing[1])
