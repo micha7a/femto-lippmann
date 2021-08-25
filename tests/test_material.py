@@ -37,7 +37,8 @@ class TestDielectric(unittest.TestCase):
         self.z = np.linspace(-5 * c.MICRO, 5 * c.MICRO)
         self.materials = [
             m.ConstantMaterial(n0=1.5, z=self.z),
-            m.SimpleDielectric(z=self.z, n0=1.5 * np.ones_like(self.z))
+            m.SimpleDielectric(z=self.z, n0=1.5 * np.ones_like(self.z)),
+            m.PhotoSensitiveMaterial(z=self.z, n0=1.5, min_energy=1 * c.NANO)
         ]
 
     def test_energy_response(self):
@@ -47,17 +48,16 @@ class TestDielectric(unittest.TestCase):
             deposited = material.energy_response(energy)
             np.testing.assert_array_less(deposited, energy)
 
-    def test_material_matrix(self):
-        s = w.GaussianPlanarWave()
-        np.testing.assert_almost_equal(self.materials[0].material_matrix(), self.materials[1].material_matrix())
-
     def test_propagation(self):
-        air = m.EmptySpace(z=self.z, name="analytic")
-        dielectric = m.SimpleDielectric(z=self.z, n0=1, name="transfer matrices")
         s = w.GaussianPlanarWave(mean=c.GREEN, std=(5 * c.MICRO))
-        dielectric.record(s, s)
-        air.record(s, s)
-        np.testing.assert_array_almost_equal(air.recent_energy, dielectric.recent_energy, decimal=10)
+        for material in self.materials:
+            material.record(s, s)
+        np.testing.assert_array_almost_equal(self.materials[0].recent_energy,
+                                             self.materials[1].recent_energy,
+                                             decimal=10)
+        np.testing.assert_array_almost_equal(self.materials[0].recent_energy,
+                                             self.materials[2].recent_energy,
+                                             decimal=10)
 
     def test_single_layer(self):
         idx_z = 1

@@ -8,6 +8,7 @@ A material module for Femto-Lippmann project.
 
 from cycler import cycler
 import matplotlib.pyplot as plt
+from itertools import cycle
 import numpy as np
 from typing import Union
 
@@ -128,7 +129,7 @@ class Material(object):
         self._recent_energy = self.energy_distribution(forward_wave, backward_wave)
         self.deposited_energy += self.energy_response(self._recent_energy)
 
-    def plot(self, ax, imaginary_axis=None, **kwargs):
+    def plot(self, ax, imaginary_axis=None, change_only=False, **kwargs):
         """
         Plot index of refraction as a function of the depth of the material
 
@@ -137,10 +138,13 @@ class Material(object):
             to arrange plots.
             imaginary_axis: if provided, create new plot showing imaginary part
             of the index of refraction. This axis can be the same as ax.
+            change_only: if true, plot only the change of the index of refraction
             **kwargs:  all other arguments than can be passed to matplotlib's
             plot function
         """
         index = self.index_of_refraction()
+        if change_only:
+            index -= self.n0
         ax.step(self.z, np.real(index), where='post', **kwargs)
         color = "k" if "color" in kwargs else ax.get_lines()[-1].get_color()
         ax.set_ylabel("real part", color=color)
@@ -157,7 +161,13 @@ class Material(object):
             imaginary_axis.tick_params(axis='y', labelcolor=color)
         ax.set_xlabel("z [m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
-        ax.set_title("index of refraction")
+        if change_only:
+            ax.set_title("change in \n refractive index")
+        else:
+            ax.set_title("refractive index")
+
+    def shade_plot(self, ax, alpha=0.1, **kwargs):
+        pass
 
     def plot_recent_energy(self, ax, **kwargs):
         """Plot the energy of the recently recorded pulses as a function of
@@ -191,6 +201,9 @@ class Material(object):
 
     def reflectivity(self):
         return np.zeros_like(self.z)
+
+    def set_beginning(self, z0):
+        self.z += z0 - self.z[0]
 
 
 class ConstantMaterial(Material):
@@ -276,7 +289,7 @@ class SimpleDielectric(Material):
         when it's constant and equal to max_dn."""
         index = self.n0 + self.max_dn * np.clip(self._deposited_energy / self.max_energy, a_max=1, a_min=None)
         # fill dummy index of refraction
-        index[-1] = index[-2]
+        # index[-1] = index[-2]
         return index
 
     def energy_response(self, energy: np.ndarray):
@@ -322,6 +335,9 @@ class SimpleDielectric(Material):
             left_wave = right_wave
         energy[0] = energy[1]
         return energy
+
+    def shade_plot(self, ax, alpha=0.1, **kwargs):
+        ax.axvspan(self.z[0], self.z[-1], alpha=alpha, **kwargs)
 
 
 class PhotoSensitiveMaterial(SimpleDielectric):
@@ -406,9 +422,15 @@ class LayeredMaterial(SimpleDielectric):
         for boundary in self.left_boundaries:
             ax.axvspan(boundary, boundary + self.layer_width, alpha=alpha, **kwargs)
 
+    def set_beginning(self, z0):
+        self.z += z0 - self.z[0]
+        self.left_boundaries += z0 - self.left_boundaries[0]
+
 
 class CompositeMaterial(SimpleDielectric):
     """A very simple implementation of a composite material.
+
+    TODO this could be optmised
 
     Behaves the same way as layered material, but can be made of any stack of
     previously created materials."""
@@ -437,6 +459,7 @@ class CompositeMaterial(SimpleDielectric):
                                              self.materials[idx + 1].index_of_refraction()[0])
                 matrix = np.tensordot(boundary, matrix, axes=(1, 0))
             z = np.concatenate([z, material.z[:-1] - np.min(material.z) + boundary_z])
+            material.set_beginning(boundary_z)
             boundary_z += material.z[-1] - material.z[0]
             self.boundaries.append(boundary_z)
             n0 = np.concatenate([n0, material.index_of_refraction()[:-1]])
@@ -445,6 +468,11 @@ class CompositeMaterial(SimpleDielectric):
         super().__init__(z=z, n0=n0, matrix=matrix, **kwargs)
 
     def shade_plot(self, ax, alpha=0.1, **kwargs):
-        colors = cycler('color', plt.get_cmap('viridis')(np.linspace(0, 1, len(self.boundaries) - 1)))
-        for left, right, color in zip(self.boundaries[:-1], self.boundaries[1:], colors.by_key()['color']):
-            ax.axvspan(left, right, alpha=alpha, color=color, **kwargs)
+        prop_cycle = plt.rcParams['axes.prop_cycle']
+        colors = cycle(prop_cycle.by_key()['color'])
+
+        for material in self.materials:
+            material.shade_plot(ax, alpha=alpha, color=next(colors), **kwargs)
+        # colors = cycler('color', plt.get_cmap('viridis')(np.linspace(0, 1, len(self.boundaries) - 1)))
+        # for left, right, color in zip(self.boundaries[:-1], self.boundaries[1:], colors.by_key()['color']):
+        #     ax.axvspan(left, right, alpha=alpha, color=color, **kwargs)
