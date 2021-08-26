@@ -196,17 +196,15 @@ class Material(object):
 
     def reflect(self, wave: w.PlanarWave = None) -> w.PlanarWave:
         """Reflect a wave from the material"""
-        if wave is not None:
-            return wave * self.matrix[0, 1, :]
-        else:
-            return self.matrix[0, 1, :]
+        if wave is None:
+            wave = w.WhitePlanarWave()
+        return wave * self.matrix[0, 1, :]
 
     def transmit(self, wave: w.PlanarWave = None) -> w.PlanarWave:
         """Transmit a wave through the material"""
-        if wave is not None:
-            return wave * self.matrix[0, 0, :]
-        else:
-            return self.matrix[0, 0, :]
+        if wave is None:
+            wave = w.WhitePlanarWave()
+        return wave * self.matrix[0, 0, :]
 
     def reflectivity(self):
         return np.zeros_like(self.z)
@@ -313,6 +311,7 @@ class SimpleDielectric(Material):
         return np.clip(energy - self.min_energy, a_min=0, a_max=None)
 
     def single_layer_matrix(self, idx_z):
+        assert (idx_z > 0)
         matrix = p.propagation_matrix(self._ns[idx_z - 1], self.z[idx_z] - self.z[idx_z - 1])
         # add boundary:
         # the last element of ns does not correspond to any physical space
@@ -342,7 +341,7 @@ class SimpleDielectric(Material):
         energy = np.zeros_like(self.z)
         energy[0] = np.sum(np.abs(np.sum(left_wave, axis=0))**2) * w.PlanarWave.dk()
         self._r = self.reflectivity()
-        self._ns = self.index_of_refraction()  # TODO make sure the index is always correct, like the matrix
+        self._ns = self.index_of_refraction()
         matrix = p.identity_matrix()
         # Calculate the wave at each step, moving forward
         for idx_z in range(1, len(self.z)):
@@ -358,20 +357,24 @@ class SimpleDielectric(Material):
 
 class PhotoSensitiveMaterial(SimpleDielectric):
     def __init__(self,
+                 z,
                  min_energy=0.0,
                  max_energy=1 * c.MICRO,
-                 max_dr=1e-3,
+                 total_ref=1,
                  r: Union[complex, np.ndarray] = 0,
+                 attenuation=0,
                  **kwargs):
-        self.max_dr = max_dr
-        super().__init__(**kwargs)
+        self.max_dr = total_ref / (z[1] - z[0])
+        self.attenuation = attenuation
+        super().__init__(z=z, **kwargs)
         self.min_energy = min_energy
         self.max_energy = max_energy
         self._r = np.ones_like(self.z) * r
 
     def single_layer_matrix(self, idx_z):
+        assert (idx_z > 0)
         propagation = p.propagation_matrix(self.n0, self.z[idx_z] - self.z[idx_z - 1])
-        reflection = p.reflection_matrix(self._r[idx_z])
+        reflection = p.reflection_matrix(self._r[idx_z] * (self.z[idx_z] - self.z[idx_z - 1]))
         matrix = np.tensordot(reflection, propagation, axes=(1, 0))
         return matrix
 
@@ -381,8 +384,7 @@ class PhotoSensitiveMaterial(SimpleDielectric):
 
     def reflectivity(self):
         index = self.max_dr * np.clip(self._deposited_energy / self.max_energy, a_max=1, a_min=None)
-        # fill dummy index of refraction
-        index[0] = index[1]
+        index = index * np.exp(-self.attenuation * self.z)
         return index
 
     def plot(self, ax, imaginary_axis=None, **kwargs):
@@ -391,7 +393,7 @@ class PhotoSensitiveMaterial(SimpleDielectric):
 
         Args:
             ax: matplotlib axis, created by plt.figure() or plt.subplots(), used
-            to arrange plots.
+            to arrange plots.i
             imaginary_axis: if provided, create new plot showing imaginary part
             of the index of refraction. This axis can be the same as ax.
             **kwargs:  all other arguments than can be passed to matplotlib's
@@ -405,6 +407,12 @@ class PhotoSensitiveMaterial(SimpleDielectric):
         ax.set_xlabel("z [m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
         ax.set_title("reflectivity")
+
+    def approximate_reflect(self, wave: w.PlanarWave = None):
+        ref = np.exp(-2j * w.PlanarWave.k[:, None] * self.z[None, :]) @ self.reflectivity() * (self.z[1] - self.z[0])
+        if wave is None:
+            wave = w.WhitePlanarWave()
+        return wave * ref
 
 
 class LayeredMaterial(SimpleDielectric):
@@ -447,10 +455,7 @@ class LayeredMaterial(SimpleDielectric):
 class CompositeMaterial(SimpleDielectric):
     """A very simple implementation of a composite material.
 
-    TODO this could be optmised
-
-    Behaves the same way as layered material, but can be made of any stack of
-    previously created materials."""
+    Wrapper on a stack of previously created materials."""
     def __init__(self, material_list, z0=0, **kwargs):
         """
         Create material from a list of composites.
@@ -461,7 +466,7 @@ class CompositeMaterial(SimpleDielectric):
             and internal material properties lost.
             **kwargs: any other arguments used by SimpleDielectric
         """
-        self.materials = material_list
+        self.materials = material_list  # TODO make copy?
         boundary_z = 0
         z = np.array([])
         for idx, material in enumerate(self.materials):

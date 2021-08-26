@@ -144,7 +144,8 @@ def reflection_matrix(r: float, backward: bool = False) -> np.ndarray:
     Returns:
 
     """
-
+    assert (r <= 1)
+    assert (r >= 0)
     matrix = np.zeros((2, 2), dtype=complex)
     if not backward:
         matrix[0, 0] = 1 - 2 * r
