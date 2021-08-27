@@ -47,7 +47,7 @@ class Material(object):
             assert (np.imag(n0) >= 0).all()
         else:
             assert np.imag(n0) >= 0
-        self.z = z
+        self.z = np.copy(z)
         self.n0 = n0
         self._deposited_energy = np.zeros(len(z))
         self.length = z[-1] - z[0]
@@ -273,7 +273,8 @@ class EmptySpace(ConstantMaterial):
 
         if backward_wave is None:
             forward_wave, backward_wave = p.swap_waves(p.change_basis(self.matrix), forward_wave, reflected_wave)
-        correlation = 2 * np.real((forward_wave * backward_wave).amplitude(z=2 * self.z))
+        z_center = (self.z[0] + self.z[-1]) / 2
+        correlation = 2 * np.real((forward_wave * backward_wave).amplitude(z=2 * (self.z - z_center)))
         return np.squeeze(forward_wave.total_energy() + backward_wave.total_energy() + correlation)
 
 
@@ -321,7 +322,7 @@ class SimpleDielectric(Material):
             matrix = np.tensordot(boundary, matrix, axes=(1, 0))
         return matrix
 
-    def material_matrix(self, backward=False):
+    def material_matrix(self, backward=False):  # TODO this could be speed up with matrix operations
         self._ns = self.index_of_refraction()
         self._r = self.reflectivity()
         matrix = p.identity_matrix()
@@ -484,7 +485,7 @@ class CompositeMaterial(SimpleDielectric):
             matrix = np.einsum('ijk,jlk->ilk', p.change_basis(material.matrix), matrix)
             # add boundary:
             if idx < len(self.materials) - 1:
-                boundary = p.boundary_matrix(material.index_of_refraction()[-2],
+                boundary = p.boundary_matrix(material.index_of_refraction()[-1],
                                              self.materials[idx + 1].index_of_refraction()[0])
                 matrix = np.tensordot(boundary, matrix, axes=(1, 0))
         if backward:
@@ -492,8 +493,18 @@ class CompositeMaterial(SimpleDielectric):
         return matrix
 
     def plot(self, ax, imaginary_axis=None, **kwargs):
+        last_n = None
+        last_z = 0
+        color = 'k'
+        if "color" in kwargs:
+            color = kwargs["color"]
         for material in self.materials:
+            n = np.real(material.index_of_refraction())
+            if last_n is not None:
+                ax.plot([last_z, material.z[0]], [last_n, n[0]], color)
             material.plot(ax, imaginary_axis=imaginary_axis, **kwargs)
+            last_n = n[-1]
+            last_z = material.z[-1]
 
     def shade_plot(self, ax, alpha=0.1, **kwargs):
         prop_cycle = plt.rcParams['axes.prop_cycle']
@@ -510,15 +521,22 @@ class CompositeMaterial(SimpleDielectric):
                backward_wave: w.PlanarWave = None,
                reflected_wave: w.PlanarWave = None):
         """
-        Record interference of two pulses
+        Record interference of two pulses TODO make the waves constant
         """
+        fw = copy.deepcopy(forward_wave)
         if reflected_wave is None:
             assert (backward_wave is not None)
-            forward_wave, reflected_wave = p.swap_waves(self.matrix, forward_wave, backward_wave)
+            fw, reflected_wave = p.swap_waves(self.matrix, fw, backward_wave)
+        rw = copy.deepcopy(reflected_wave)
         left_wave = [forward_wave.s, reflected_wave.s]
-        for material in self.materials:
-            left_wave = np.einsum('ijk,jk->ik', material.matrix, left_wave)
-            material.record(forward_wave=forward_wave, reflected_wave=reflected_wave)
-            forward_wave.s = left_wave[0]
-            reflected_wave.s = left_wave[1]
+        for idx, material in enumerate(self.materials):
+            matrix = p.change_basis(material.matrix)
+            if idx < len(self.materials) - 1:
+                boundary = p.boundary_matrix(material.index_of_refraction()[-1],
+                                             self.materials[idx + 1].index_of_refraction()[0])
+                matrix = np.tensordot(boundary, matrix, axes=(1, 0))
+            left_wave = np.einsum('ijk,jk->ik', matrix, left_wave)
+            material.record(forward_wave=fw, reflected_wave=rw)
+            fw.s = left_wave[0]
+            rw.s = left_wave[1]
         self.matrix = self.material_matrix(backward=True)
