@@ -122,7 +122,7 @@ class PlanarWave(object):
         if self.s.size == 0:
             raise ValueError("Can't plot empty spectrum")
         x = self.wavelength() if wavelength else self.k
-        ax.set_xlabel(r"$\lambda$ [m]" if wavelength else r"k [1/m]")
+        ax.set_xlabel(r"$\lambda$ [m]" if wavelength else r"$k$ [1/m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
         ax.plot(x, self.power_spectrum(), **kwargs)
         # If the color is given to the whole figure, we don't want to have colored axis
@@ -139,7 +139,7 @@ class PlanarWave(object):
             else:
                 color = ax._get_lines.get_next_color()
                 kwargs["color"] = color
-            spectrum_axis.set_xlabel(r"$\lambda$ [m]" if wavelength else r"k [1/m]")
+            spectrum_axis.set_xlabel(r"$\lambda$ [m]" if wavelength else r"$k$ [1/m]")
             spectrum_axis.xaxis.set_major_formatter(c.FORMATTER)
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
             spectrum_axis.plot(x, np.real(self.s), **kwargs)
