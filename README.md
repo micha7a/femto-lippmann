@@ -1,5 +1,8 @@
 # Femto-Lippmann
-Software for a joined Galatea & LCAV project on digitising Lippmann photography.
+
+Simulations of propagation of light through non-uniform media. Use transfer-matrix method for layered materials.
+
+Simulations originally developed for a joined Galatea & LCAV project on digitising Lippmann photography. 
 
 ---
 ## Getting stated
@@ -64,18 +67,6 @@ changes form Jupyter Notebooks.
 Before pushing to the project, you should also run unit tests in `tests` 
 directory, and adding more tests is always welcome ;)
 
-## TODOs
-
- - replace old functionality:
-    - equivalent patterns
-    - adding index of refraction in arbitrary place
-    - add saturation lines to plots
-    - double pulse example
- - make some parts of material non modifiable (or make the composite 
- material more sophisticated)
- - add a (white) wave
- - make wave theory 3D
- - plot colors
      
 ## License
 
