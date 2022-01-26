@@ -6,13 +6,15 @@ Created on 17.08.2019
 A material module for Femto-Lippmann project.
 """
 
-from cycler import cycler
+import copy
 import matplotlib.pyplot as plt
+from itertools import cycle
 import numpy as np
 from typing import Union
 
 import constants as c
 import wave as w
+import propagation as p
 
 
 class Material(object):
@@ -45,14 +47,36 @@ class Material(object):
             assert (np.imag(n0) >= 0).all()
         else:
             assert np.imag(n0) >= 0
-        self.z = z
+        self.z = np.copy(z)
         self.n0 = n0
-        self.deposited_energy = np.zeros(len(z))
+        self._deposited_energy = np.zeros(len(z))
         self.length = z[-1] - z[0]
-        self.recent_energy = np.zeros(len(z))
+        self._recent_energy = np.zeros(len(z))
         if "matrix" in kwargs:
             self.matrix = kwargs["matrix"]
-        self.matrix = self.material_matrix(w.PlanarWave, backward=True)
+        self.matrix = self.material_matrix(backward=True)
+        self._tmp_matrix = None
+        self._ns = None
+        self._r = np.zeros(len(z))
+
+    @property
+    def recent_energy(self):
+        """Get the from the last response."""
+        return self._recent_energy
+
+    @property
+    def deposited_energy(self):
+        """I'm the 'deposited_energy' property."""
+        return self._deposited_energy
+
+    @deposited_energy.setter
+    def deposited_energy(self, value):
+        self._deposited_energy = value
+        self.matrix = self.material_matrix(backward=True)
+
+    @deposited_energy.deleter
+    def deposited_energy(self):
+        del self._deposited_energy
 
     def index_of_refraction(self) -> np.ndarray:
         """Function calculating index of refraction between each two boundaries,
@@ -81,12 +105,11 @@ class Material(object):
         """
         raise NotImplementedError
 
-    def material_matrix(self, wave: w.PlanarWave, backward: bool = False) -> np.ndarray:
+    def material_matrix(self, backward: bool = False) -> np.ndarray:
         """
         Calculate propagation matrix through the material
 
         Args:
-            wave: reference wave to propagate (type of wave is used, not actual values)
             backward: if true, use backward propagation model (see wave documentation for details)
 
         Returns:
@@ -94,21 +117,28 @@ class Material(object):
         """
         raise NotImplementedError
 
-    def energy_distribution(self, forward_wave: w.PlanarWave, backward_wave: w.PlanarWave) -> np.ndarray:
+    def energy_distribution(self,
+                            forward_wave: w.PlanarWave,
+                            backward_wave: w.PlanarWave = None,
+                            reflected_wave: w.PlanarWave = None) -> np.ndarray:
         """
         Calculate energy distribution of two interfering pulses propagating through the material.
         """
         raise NotImplementedError
 
-    def record(self, forward_wave: w.PlanarWave, backward_wave: w.PlanarWave):
+    def record(self,
+               forward_wave: w.PlanarWave,
+               backward_wave: w.PlanarWave = None,
+               reflected_wave: w.PlanarWave = None):
         """
         Record interference of two pulses
         """
-        self.recent_energy = self.energy_distribution(forward_wave, backward_wave)
-        self.deposited_energy += self.energy_response(self.recent_energy)
-        self.matrix = self.material_matrix(forward_wave, backward=True)
+        self._recent_energy = self.energy_distribution(forward_wave,
+                                                       backward_wave=backward_wave,
+                                                       reflected_wave=reflected_wave)
+        self.deposited_energy += self.energy_response(self._recent_energy)
 
-    def plot(self, ax, imaginary_axis=None, **kwargs):
+    def plot(self, ax, imaginary_axis=None, change_only=False, **kwargs):
         """
         Plot index of refraction as a function of the depth of the material
 
@@ -117,16 +147,20 @@ class Material(object):
             to arrange plots.
             imaginary_axis: if provided, create new plot showing imaginary part
             of the index of refraction. This axis can be the same as ax.
+            change_only: if true, plot only the change of the index of refraction
             **kwargs:  all other arguments than can be passed to matplotlib's
             plot function
         """
         index = self.index_of_refraction()
+        if change_only:
+            index -= self.n0
         ax.step(self.z, np.real(index), where='post', **kwargs)
         color = "k" if "color" in kwargs else ax.get_lines()[-1].get_color()
         ax.set_ylabel("real part", color=color)
         ax.tick_params(axis='y', labelcolor=color)
         if imaginary_axis is not None:
             if "color" not in kwargs:
+                # accessing private property because otherwise get_next_color does not work
                 color = ax._get_lines.get_next_color()
                 kwargs["color"] = color
             else:
@@ -136,7 +170,13 @@ class Material(object):
             imaginary_axis.tick_params(axis='y', labelcolor=color)
         ax.set_xlabel("z [m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
-        ax.set_title("index of refraction")
+        if change_only:
+            ax.set_title("change in \n refractive index")
+        else:
+            ax.set_title("refractive index")
+
+    def shade_plot(self, ax, alpha=0.1, **kwargs):
+        pass
 
     def plot_recent_energy(self, ax, **kwargs):
         """Plot the energy of the recently recorded pulses as a function of
@@ -148,19 +188,29 @@ class Material(object):
             **kwargs:  all other arguments than can be passed to matplotlib's
             plot function
         """
-        ax.plot(self.z, self.recent_energy, **kwargs)
+        ax.plot(self.z, self._recent_energy, **kwargs)
         ax.set_xlabel("z [m]")
         ax.xaxis.set_major_formatter(c.FORMATTER)
         ax.set_title("propagated energy")
         ax.set_ylabel("intensity")
 
-    def reflect(self, wave: w.PlanarWave) -> w.PlanarWave:
+    def reflect(self, wave: w.PlanarWave = None) -> w.PlanarWave:
         """Reflect a wave from the material"""
+        if wave is None:
+            wave = w.WhitePlanarWave()
         return wave * self.matrix[0, 1, :]
 
-    def transmit(self, wave: w.PlanarWave) -> w.PlanarWave:
+    def transmit(self, wave: w.PlanarWave = None) -> w.PlanarWave:
         """Transmit a wave through the material"""
+        if wave is None:
+            wave = w.WhitePlanarWave()
         return wave * self.matrix[0, 0, :]
+
+    def reflectivity(self):
+        return np.zeros_like(self.z)
+
+    def set_beginning(self, z0):
+        self.z += z0 - self.z[0]
 
 
 class ConstantMaterial(Material):
@@ -179,11 +229,13 @@ class ConstantMaterial(Material):
         """Constant material does not react to light"""
         return np.zeros_like(energy)
 
-    def energy_distribution(self, forward_wave, backward_wave):
+    def energy_distribution(self, forward_wave, backward_wave=None, reflected_wave=None):
         """Semi-analytic interference calculation, where the amplitude at each
         point is calculated analytically using _propagate method,
         but then intensity is calculated numerically point-wise"""
 
+        if backward_wave is None:
+            forward_wave, backward_wave = p.swap_waves(p.change_basis(self.matrix), forward_wave, reflected_wave)
         total_amplitude = self._propagate(forward_wave, sign=1) + self._propagate(backward_wave, sign=-1)
         return np.sum((np.abs(total_amplitude)**2), axis=0) * w.PlanarWave.dk()
 
@@ -203,8 +255,8 @@ class ConstantMaterial(Material):
         transform = np.exp(1j * self.n0 * spectrum.k[:, None] @ z[None, :])
         return np.repeat(spectrum.s[:, None], len(self.z), axis=1) * transform
 
-    def material_matrix(self, wave: w.PlanarWave, backward=False):
-        return wave.propagation_matrix(self.n0, self.length, backward=backward)
+    def material_matrix(self, backward=False):
+        return p.propagation_matrix(self.n0, self.length, backward=backward)
 
 
 class EmptySpace(ConstantMaterial):
@@ -213,11 +265,16 @@ class EmptySpace(ConstantMaterial):
     def __init__(self, **kwargs):
         super().__init__(n0=1.0, **kwargs)
 
-    def energy_distribution(self, forward_wave: w.PlanarWave, backward_wave: w.PlanarWave) -> np.ndarray:
+    def energy_distribution(self, forward_wave: w.PlanarWave, backward_wave: w.PlanarWave = None, reflected_wave=None) \
+            -> \
+            np.ndarray:
         """Different implementation of interference based on correlation rather
         than matrix theory"""
 
-        correlation = 2 * np.real((forward_wave * backward_wave).amplitude(z=2 * self.z))
+        if backward_wave is None:
+            forward_wave, backward_wave = p.swap_waves(p.change_basis(self.matrix), forward_wave, reflected_wave)
+        z_center = (self.z[0] + self.z[-1]) / 2
+        correlation = 2 * np.real((forward_wave * backward_wave).amplitude(z=2 * (self.z - z_center)))
         return np.squeeze(forward_wave.total_energy() + backward_wave.total_energy() + correlation)
 
 
@@ -244,9 +301,7 @@ class SimpleDielectric(Material):
 
         Index of refraction is linear with deposited energy up to max_energy,
         when it's constant and equal to max_dn."""
-        index = self.n0 + self.max_dn * np.clip(self.deposited_energy / self.max_energy, a_max=1, a_min=None)
-        # fill dummy index of refraction
-        index[-1] = index[-2]
+        index = self.n0 + self.max_dn * np.clip(self._deposited_energy / self.max_energy, a_max=1, a_min=None)
         return index
 
     def energy_response(self, energy: np.ndarray):
@@ -256,40 +311,109 @@ class SimpleDielectric(Material):
         this threshold."""
         return np.clip(energy - self.min_energy, a_min=0, a_max=None)
 
-    def material_matrix(self, wave: w.PlanarWave, backward=False):
-        ns = self.index_of_refraction()
-        matrix = wave.identity_matrix()
-        for idx in range(len(self.z) - 1):
-            propagation = wave.propagation_matrix(ns[idx], self.z[idx + 1] - self.z[idx])
-            matrix = np.einsum('ijk,jlk->ilk', propagation, matrix)
-            # add boundary:
-            # the last element of ns does not correspond to any physical space
-            # thus the last boundary is between second to last and last index
-            if idx < len(self.z) - 2:
-                boundary = wave.boundary_matrix(ns[idx], ns[idx + 1])
-                matrix = np.tensordot(boundary, matrix, axes=(1, 0))
-        if backward:
-            matrix = w.PlanarWave.swap_waves(matrix)
+    def single_layer_matrix(self, idx_z):
+        assert (idx_z > 0)
+        matrix = p.propagation_matrix(self._ns[idx_z - 1], self.z[idx_z] - self.z[idx_z - 1])
+        # add boundary:
+        # the last element of ns does not correspond to any physical space
+        # thus the last boundary is between second to last and last index
+        if idx_z < len(self.z) - 2:
+            boundary = p.boundary_matrix(self._ns[idx_z - 1], self._ns[idx_z])
+            matrix = np.tensordot(boundary, matrix, axes=(1, 0))
         return matrix
 
-    def energy_distribution(self, forward_wave, backward_wave):
+    def material_matrix(self, backward=False):  # TODO this could be speed up with matrix operations
+        self._ns = self.index_of_refraction()
+        self._r = self.reflectivity()
+        matrix = p.identity_matrix()
+        for idx_z in range(1, len(self.z)):
+            matrix = np.einsum('ijk,jlk->ilk', self.single_layer_matrix(idx_z), matrix)
+        if backward:
+            matrix = p.change_basis(matrix)
+        return matrix
+
+    def energy_distribution(self, forward_wave, backward_wave=None, reflected_wave=None):
+        if reflected_wave is None:
+            assert (backward_wave is not None)
+            forward_wave, reflected_wave = p.swap_waves(self.matrix, forward_wave, backward_wave)
+
         # Calculate the outgoing waves
-        incoming = np.array([forward_wave.s, backward_wave.s])
-        outgoing = np.einsum('ijk,jk->ik', self.matrix, incoming)
-        # Calculate the wave at each step, moving forward
+        left_wave = [forward_wave.s, reflected_wave.s]
         energy = np.zeros_like(self.z)
-        left = np.array([incoming[0], outgoing[1]])
-        ns = self.index_of_refraction()
-        for idx_z in range(len(self.z) - 1):
-            matrix = w.PlanarWave.propagation_matrix(ns[idx_z], self.z[idx_z + 1] - self.z[idx_z])
-            if idx_z > 0:
-                boundary = w.PlanarWave.boundary_matrix(ns[idx_z - 1], ns[idx_z])
-                matrix = np.einsum('ijk,jl->ilk', matrix, boundary)
-            right = np.einsum('ijk,jk->ik', matrix, left)
-            energy[idx_z] = np.sum(np.abs(np.sum(right, axis=0))**2) * w.PlanarWave.dk()
-            left = right
-        energy[-1] = energy[-2]
+        energy[0] = np.sum(np.abs(np.sum(left_wave, axis=0))**2) * w.PlanarWave.dk()
+        self._r = self.reflectivity()
+        self._ns = self.index_of_refraction()
+        matrix = p.identity_matrix()
+        # Calculate the wave at each step, moving forward
+        for idx_z in range(1, len(self.z)):
+            matrix = np.einsum('ijk,jlk->ilk', self.single_layer_matrix(idx_z), matrix)
+            current_wave = np.einsum('ijk,jk->ik', matrix, left_wave)
+            energy[idx_z] = np.sum(np.abs(np.sum(current_wave, axis=0))**2) * w.PlanarWave.dk()
+        self._tmp_matrix = p.change_basis(matrix)
         return energy
+
+    def shade_plot(self, ax, alpha=0.1, **kwargs):
+        ax.axvspan(self.z[0], self.z[-1], alpha=alpha, **kwargs)
+
+
+class PhotoSensitiveMaterial(SimpleDielectric):
+    def __init__(self,
+                 z,
+                 min_energy=0.0,
+                 max_energy=1 * c.MICRO,
+                 total_ref=1,
+                 r: Union[complex, np.ndarray] = 0,
+                 attenuation=0,
+                 **kwargs):
+        self.max_dr = total_ref / (z[1] - z[0])
+        self.attenuation = attenuation
+        super().__init__(z=z, **kwargs)
+        self.min_energy = min_energy
+        self.max_energy = max_energy
+        self._r = np.ones_like(self.z) * r
+
+    def single_layer_matrix(self, idx_z):
+        assert (idx_z > 0)
+        propagation = p.propagation_matrix(self.n0, self.z[idx_z] - self.z[idx_z - 1])
+        reflection = p.reflection_matrix(self._r[idx_z] * (self.z[idx_z] - self.z[idx_z - 1]))
+        matrix = np.tensordot(reflection, propagation, axes=(1, 0))
+        return matrix
+
+    def index_of_refraction(self):
+        """Index of refraction"""
+        return self.n0
+
+    def reflectivity(self):
+        index = self.max_dr * np.clip(self._deposited_energy / self.max_energy, a_max=1, a_min=None)
+        index = index * np.exp(-self.attenuation * self.z)
+        return index
+
+    def plot(self, ax, imaginary_axis=None, **kwargs):
+        """
+        Plot index of refraction as a function of the depth of the material
+
+        Args:
+            ax: matplotlib axis, created by plt.figure() or plt.subplots(), used
+            to arrange plots.i
+            imaginary_axis: if provided, create new plot showing imaginary part
+            of the index of refraction. This axis can be the same as ax.
+            **kwargs:  all other arguments than can be passed to matplotlib's
+            plot function
+        """
+        ref = self.reflectivity()
+        ax.step(self.z, ref, where='post', **kwargs)
+        color = "k" if "color" in kwargs else ax.get_lines()[-1].get_color()
+        ax.set_ylabel("real part", color=color)
+        ax.tick_params(axis='y', labelcolor=color)
+        ax.set_xlabel("z [m]")
+        ax.xaxis.set_major_formatter(c.FORMATTER)
+        ax.set_title("reflectivity")
+
+    def approximate_reflect(self, wave: w.PlanarWave = None):
+        ref = np.exp(-2j * w.PlanarWave.k[:, None] * self.z[None, :]) @ self.reflectivity() * (self.z[1] - self.z[0])
+        if wave is None:
+            wave = w.WhitePlanarWave()
+        return wave * ref
 
 
 class LayeredMaterial(SimpleDielectric):
@@ -316,19 +440,23 @@ class LayeredMaterial(SimpleDielectric):
                 if relative_pos < (period + layer_width) / 2:
                     n[idx] = n1
         super().__init__(z=np.array(z), n0=np.array(n), **kwargs)
-        self.left_boundaries = z[0] + (period - layer_width) / 2 + period * np.arange(0, n_layers)
+        self.left_boundaries = self.z[0] + (period - layer_width) / 2 + period * np.arange(0, n_layers)
         self.layer_width = layer_width
 
     def shade_plot(self, ax, alpha=0.1, **kwargs):
         for boundary in self.left_boundaries:
             ax.axvspan(boundary, boundary + self.layer_width, alpha=alpha, **kwargs)
 
+    def set_beginning(self, z0):
+        diff = z0 - self.z[0]
+        self.z += diff
+        self.left_boundaries += diff
+
 
 class CompositeMaterial(SimpleDielectric):
     """A very simple implementation of a composite material.
 
-    Behaves the same way as layered material, but can be made of any stack of
-    previously created materials."""
+    Wrapper on a stack of previously created materials."""
     def __init__(self, material_list, z0=0, **kwargs):
         """
         Create material from a list of composites.
@@ -339,29 +467,76 @@ class CompositeMaterial(SimpleDielectric):
             and internal material properties lost.
             **kwargs: any other arguments used by SimpleDielectric
         """
-        self.materials = material_list
+        self.materials = material_list  # TODO make copy?
+        boundary_z = 0
         z = np.array([])
-        boundary_z = z0
-        self.boundaries = [boundary_z]
-        n0 = np.array([])
-        wave = w.PlanarWave
-        matrix = wave.identity_matrix()
         for idx, material in enumerate(self.materials):
-            matrix = np.einsum('ijk,jlk->ilk', material.material_matrix(wave), matrix)
+            material.set_beginning(boundary_z)
+            boundary_z = material.z[-1]
+            # create those because they are required by the material
+            z = np.concatenate([z, material.z[:-1]])
+            if idx == len(self.materials) - 1:
+                z = np.concatenate([z, [material.z[-1]]])
+        super().__init__(z=z, n0=np.zeros_like(z), **kwargs)
+
+    def material_matrix(self, backward=False):
+        matrix = p.identity_matrix()
+        for idx, material in enumerate(self.materials):
+            matrix = np.einsum('ijk,jlk->ilk', p.change_basis(material.matrix), matrix)
             # add boundary:
             if idx < len(self.materials) - 1:
-                boundary = wave.boundary_matrix(material.index_of_refraction()[-2],
-                                                self.materials[idx + 1].index_of_refraction()[0])
+                boundary = p.boundary_matrix(material.index_of_refraction()[-1],
+                                             self.materials[idx + 1].index_of_refraction()[0])
                 matrix = np.tensordot(boundary, matrix, axes=(1, 0))
-            z = np.concatenate([z, material.z[:-1] - np.min(material.z) + boundary_z])
-            boundary_z += material.z[-1] - material.z[0]
-            self.boundaries.append(boundary_z)
-            n0 = np.concatenate([n0, material.index_of_refraction()[:-1]])
-        z = np.concatenate([z, [boundary_z]])
-        n0 = np.concatenate([n0, [n0[-1]]])
-        super().__init__(z=z, n0=n0, matrix=matrix, **kwargs)
+        if backward:
+            matrix = p.change_basis(matrix)
+        return matrix
+
+    def plot(self, ax, imaginary_axis=None, **kwargs):
+        last_n = None
+        last_z = 0
+        color = 'k'
+        if "color" in kwargs:
+            color = kwargs["color"]
+        for material in self.materials:
+            n = np.real(material.index_of_refraction())
+            if last_n is not None:
+                ax.plot([last_z, material.z[0]], [last_n, n[0]], color)
+            material.plot(ax, imaginary_axis=imaginary_axis, **kwargs)
+            last_n = n[-1]
+            last_z = material.z[-1]
 
     def shade_plot(self, ax, alpha=0.1, **kwargs):
-        colors = cycler('color', plt.get_cmap('viridis')(np.linspace(0, 1, len(self.boundaries) - 1)))
-        for left, right, color in zip(self.boundaries[:-1], self.boundaries[1:], colors.by_key()['color']):
-            ax.axvspan(left, right, alpha=alpha, color=color, **kwargs)
+        prop_cycle = plt.rcParams['axes.prop_cycle']
+        colors = cycle(prop_cycle.by_key()['color'])
+        for material in self.materials:
+            material.shade_plot(ax, alpha=alpha, color=next(colors), **kwargs)
+
+    def plot_recent_energy(self, ax, **kwargs):
+        for material in self.materials:
+            material.plot_recent_energy(ax, **kwargs)
+
+    def record(self,
+               forward_wave: w.PlanarWave,
+               backward_wave: w.PlanarWave = None,
+               reflected_wave: w.PlanarWave = None):
+        """
+        Record interference of two pulses TODO make the waves constant
+        """
+        fw = copy.deepcopy(forward_wave)
+        if reflected_wave is None:
+            assert (backward_wave is not None)
+            fw, reflected_wave = p.swap_waves(self.matrix, fw, backward_wave)
+        rw = copy.deepcopy(reflected_wave)
+        left_wave = [forward_wave.s, reflected_wave.s]
+        for idx, material in enumerate(self.materials):
+            matrix = p.change_basis(material.matrix)
+            if idx < len(self.materials) - 1:
+                boundary = p.boundary_matrix(material.index_of_refraction()[-1],
+                                             self.materials[idx + 1].index_of_refraction()[0])
+                matrix = np.tensordot(boundary, matrix, axes=(1, 0))
+            left_wave = np.einsum('ijk,jk->ik', matrix, left_wave)
+            material.record(forward_wave=fw, reflected_wave=rw)
+            fw.s = left_wave[0]
+            rw.s = left_wave[1]
+        self.matrix = self.material_matrix(backward=True)
